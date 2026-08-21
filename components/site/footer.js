@@ -47,6 +47,7 @@ export default function Footer() {
           <ul className="space-y-2.5 text-sm">
             {NAV_ITEMS.map((n) => (<li key={n.href}><Link href={n.href} className="text-slate-400 hover:text-brand-green transition">{n.label}</Link></li>))}
             <li><Link href="/laporan" className="text-slate-400 hover:text-brand-green transition inline-flex items-center gap-1.5"><FileBarChart className="w-3.5 h-3.5" />Laporan Publik</Link></li>
+            <li><Link href="/faq" className="text-slate-400 hover:text-brand-green transition">FAQ</Link></li>
           </ul>
         </div>
 

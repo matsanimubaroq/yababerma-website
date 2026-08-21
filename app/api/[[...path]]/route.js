@@ -118,6 +118,35 @@ async function sendVerifiedEmail(donation) {
   } catch (e) { console.error('Email(verified) exception:', e?.message) }
 }
 
+async function sendAdminNotifyEmail(donation) {
+  if (!resend || !process.env.ADMIN_EMAIL) return
+  const name = escapeHtml(donation.is_anonymous ? 'Hamba Allah' : (donation.donor_name || '-'))
+  const program = escapeHtml(donation.campaign_title || 'Donasi Umum')
+  const bank = escapeHtml(BANK_LABELS[donation.payment_method] || donation.payment_method || '-')
+  const adminUrl = (process.env.NEXT_PUBLIC_BASE_URL || '') + '/admin'
+  const html = `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#1E293B;padding:20px;background:#f8fafc">
+    <div style="max-width:520px;margin:auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:24px">
+      <h2 style="color:#00A651;margin:0 0 4px">\uD83D\uDD14 Donasi Baru Masuk</h2>
+      <p style="color:#475569;margin:0 0 16px">Ada donasi baru yang menunggu verifikasi.</p>
+      <table style="border-collapse:collapse;font-size:14px;width:100%">
+        <tr><td style="padding:7px 0;color:#64748b">Donatur</td><td style="padding:7px 0;text-align:right;font-weight:600">${name}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b">WhatsApp</td><td style="padding:7px 0;text-align:right">${escapeHtml(donation.donor_whatsapp || '-')}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b">Email</td><td style="padding:7px 0;text-align:right">${escapeHtml(donation.donor_email || '-')}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b">Program</td><td style="padding:7px 0;text-align:right;font-weight:600">${program}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b">Nominal</td><td style="padding:7px 0;text-align:right;font-weight:700;color:#00A651">${rp(donation.amount)}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b">Total Transfer</td><td style="padding:7px 0;text-align:right">${rp(donation.total_amount)} (kode ${donation.unique_code})</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b">Metode</td><td style="padding:7px 0;text-align:right">${bank}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b">Ref</td><td style="padding:7px 0;text-align:right">${escapeHtml(donation.id)}</td></tr>
+      </table>
+      <p style="margin-top:18px;text-align:center"><a href="${adminUrl}" style="background:#00A651;color:#fff;text-decoration:none;padding:11px 20px;border-radius:10px;font-weight:600;display:inline-block">Buka Panel Admin</a></p>
+    </div>
+  </body></html>`
+  try {
+    const { error } = await resend.emails.send({ from: process.env.MAIL_FROM, to: [process.env.ADMIN_EMAIL], subject: `Donasi Baru ${rp(donation.total_amount)} \u2014 ${donation.campaign_title}`, html })
+    if (error) console.error('Resend(admin) error:', error?.message || JSON.stringify(error))
+  } catch (e) { console.error('Email(admin) exception:', e?.message) }
+}
+
 // ---------------- Seed data ----------------
 function daysFromNow(n) { return new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString() }
 
@@ -390,8 +419,9 @@ async function handleRoute(request, { params }) {
         await db.collection('campaigns').updateOne({ slug: campaign.slug }, { $inc: { collected_amount: amount, donor_count: 1 } })
       }
 
-      // Send automatic thank-you + receipt email in the background (non-blocking)
+      // Send automatic thank-you + receipt email + admin notification (background, non-blocking)
       sendDonationEmail(donation).catch(() => {})
+      sendAdminNotifyEmail(donation).catch(() => {})
 
       return handleCORS(NextResponse.json(donation))
     }

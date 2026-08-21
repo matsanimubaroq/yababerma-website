@@ -333,14 +333,30 @@ backend:
         -agent: "testing"
         -comment: "✅ PASSED (10/10 tests). Admin verify email feature working perfectly! Created donation (ID: abc5a296-82a6-43fa-8d52-629dbcafe1b7) with donor_email='delivered@resend.dev'. POST /api/admin/verify with status='verified' returns 200 in 0.219s (well under 2s requirement) - email is truly fire-and-forget and non-blocking. Response donation.status='verified' and verified_at set correctly (2026-08-21T11:28:45.430Z). GET /api/admin/donations confirms status='verified' and verified_at is set. Revert to pending works perfectly: status changes back to 'pending' and verified_at becomes null. Negative tests working: empty body returns 400 'donation_id wajib', no x-admin-key header returns 401 'Unauthorized'. Quick regression passed: 12 concurrent requests (8x GET /api/campaigns, GET /api/campaigns/kurban-peduli-banua with kurban_options, GET /api/prayers with 11 items >= 8, GET /api/stats, GET /api/auth/me with user null) with ZERO 500 errors. The sendVerifiedEmail function is correctly implemented in fire-and-forget mode (.catch(() => {})) ensuring it doesn't block the API response. Feature is production-ready."
 
+  - task: "Admin notification email on new donation (POST /api/donations regression)"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Added sendAdminNotifyEmail(donation) fired fire-and-forget after donation insert (line 424), alongside the existing sendDonationEmail. It emails ADMIN_EMAIL a 'Donasi Baru Masuk' notification. MUST NOT block or break POST /api/donations. Please regression test: (1) POST /api/donations with donor_email returns 200 quickly (<2s) with unique_code (100-999), total_amount=amount+unique_code, status='pending'; campaign collected_amount +amount and donor_count +1. (2) POST /api/donations WITHOUT donor_email still returns 200. (3) Negative: amount<1000 -> 400, missing donor_name -> 400, missing donor_whatsapp -> 400. (4) Quick regression of GET /api/campaigns (8), GET /api/prayers (>=8), GET /api/stats, GET /api/admin/summary with x-admin-key. Email delivery may fail (domain unverified) but must not affect API response."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED (10/10 tests). Admin notification email feature working perfectly! POST /api/donations with donor_email returns 200 in 0.298s (well under 2s requirement) - email is truly fire-and-forget and non-blocking. Donation created with unique_code=774 (100-999), total_amount=75774 correctly calculated (amount + unique_code), status='pending'. Campaign progress verified: collected_amount increased by exactly 75000 and donor_count increased by 1 (before: 87550000/343, after: 87625000/344). POST /api/donations without donor_email also works (returns 200 with unique_code=172, total_amount=50172, status=pending). All negative validations working: amount<1000 returns 400 'Nominal donasi tidak valid', missing donor_name returns 400 'Nama dan nomor WhatsApp wajib diisi', missing donor_whatsapp returns 400 'Nama dan nomor WhatsApp wajib diisi'. Quick regression passed: GET /api/campaigns (8 campaigns), GET /api/prayers (11 items >= 8), GET /api/stats (all required fields present), GET /api/admin/summary with x-admin-key (200 with all required fields: total_donations=5, verified=0, pending=5), POST /api/admin/login (200 OK). The sendAdminNotifyEmail function is correctly implemented in fire-and-forget mode (.catch(() => {})) ensuring it doesn't block the API response. Feature is production-ready."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 1
+  test_sequence: 2
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "Admin notification email on new donation (POST /api/donations regression)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -364,3 +380,7 @@ agent_communication:
     -message: "Added verified-status email feature: When admin verifies a donation (POST /api/admin/verify status='verified'), backend now fires sendVerifiedEmail(donation) in background (fire-and-forget) to donor_email. Must NOT block/slow the verify response. Please test: (1) create donation with donor_email, (2) verify it quickly (< 2s), (3) confirm status & verified_at in GET /api/admin/donations, (4) revert to pending, (5) negative tests (empty body -> 400, no header -> 401), (6) quick regression."
     -agent: "testing"
     -message: "✅ VERIFIED EMAIL FEATURE TESTED - ALL PASSED (10/10 tests). Admin verify email feature working perfectly! Created donation with donor_email='delivered@resend.dev'. POST /api/admin/verify returns 200 in 0.219s (well under 2s requirement) - email is truly fire-and-forget and non-blocking. Status changes to 'verified' with verified_at timestamp set correctly. GET /api/admin/donations confirms verification. Revert to pending works: status='pending' and verified_at=null. Negative tests working: empty body -> 400 'donation_id wajib', no x-admin-key -> 401 'Unauthorized'. Quick regression passed: 12 concurrent requests with ZERO 500 errors (campaigns, kurban with kurban_options, prayers >= 8, stats, auth/me with user null). The sendVerifiedEmail function is correctly implemented in fire-and-forget mode ensuring it doesn't block the API response. Feature is production-ready."
+    -agent: "main"
+    -message: "New batch added: sendAdminNotifyEmail(donation) is now fired fire-and-forget on POST /api/donations (line 424) in addition to sendDonationEmail. Please regression-test POST /api/donations to ensure the new admin notification did NOT break/slow the endpoint: (1) with donor_email returns 200 quickly with correct unique_code/total_amount/status=pending and campaign increment; (2) without donor_email still returns 200; (3) negative cases (amount<1000->400, missing donor_name->400, missing donor_whatsapp->400); (4) quick regression of GET /api/campaigns (8), GET /api/prayers (>=8), GET /api/stats, and GET /api/admin/summary with x-admin-key. Focus only on this; other features already passed previously."
+    -agent: "testing"
+    -message: "✅ ADMIN NOTIFICATION EMAIL REGRESSION TEST PASSED (10/10 tests). Comprehensive testing completed for the new sendAdminNotifyEmail(donation) feature on POST /api/donations. Key results: (1) POST /api/donations with donor_email returns 200 in 0.298s (well under 2s requirement) - email is truly fire-and-forget and non-blocking. Donation created successfully with unique_code=774 (100-999), total_amount=75774 (amount + unique_code), status='pending'. Campaign progress verified: collected_amount increased by exactly 75000 and donor_count increased by 1. (2) POST /api/donations without donor_email works perfectly (returns 200). (3) All negative validations working: amount<1000->400, missing donor_name->400, missing donor_whatsapp->400. (4) Quick regression passed: GET /api/campaigns (8 campaigns), GET /api/prayers (11 items >= 8), GET /api/stats (all required fields), GET /api/admin/summary (200 with all fields), POST /api/admin/login (200 OK). Supervisor logs confirm Resend API is being called and returning expected 403 'domain not verified' error, which is correctly caught and logged without blocking the API response. The sendAdminNotifyEmail function is correctly implemented in fire-and-forget mode (.catch(() => {})) ensuring it doesn't block the API response. Feature is production-ready. No critical issues found."

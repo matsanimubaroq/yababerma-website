@@ -23,8 +23,8 @@ export default function Navbar() {
         <Link href="/" className="flex items-center gap-2.5">
           <img src={ORG.logo} alt="YABABERMA" className="w-10 h-10 md:w-12 md:h-12 object-contain" />
           <div className="leading-tight hidden sm:block">
-            <p className="font-heading font-extrabold text-brand-ink text-sm md:text-base">Banua Berkah Mandiri</p>
-            <p className="text-[10px] md:text-xs text-muted-foreground">Filantropi Islam &amp; Kemanusiaan</p>
+            <p className="font-heading font-extrabold text-brand-ink text-sm md:text-base">Yayasan Banua Berkah Mandiri</p>
+            <p className="text-[10px] md:text-xs text-muted-foreground">Lembaga Filantropi &amp; Kemanusiaan</p>
           </div>
         </Link>
 

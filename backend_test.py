@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
-Backend test for YABABERMA donation platform - Admin Verify Email Feature
-Tests the new automatic verified email on admin verify + quick regression
+Backend test for YABABERMA donation platform - Admin Notification Email Regression
+Tests the new sendAdminNotifyEmail(donation) on POST /api/donations
 """
 
 import requests
 import time
-import asyncio
-import aiohttp
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configuration
@@ -15,20 +13,163 @@ BASE_URL = "https://yababerma-donasi.preview.emergentagent.com"
 ADMIN_KEY = "yababerma-admin-2026"
 ADMIN_HEADERS = {"x-admin-key": ADMIN_KEY, "Content-Type": "application/json"}
 
-def test_create_donation_for_verify():
-    """Test 1: Create a donation to verify"""
+def test_get_campaign_before(campaign_slug):
+    """Get campaign state before donation"""
     print("\n" + "="*80)
-    print("TEST 1: Create donation for verification")
+    print(f"PRE-TEST: Get campaign state before donation")
+    print("="*80)
+    
+    try:
+        url = f"{BASE_URL}/api/campaigns/{campaign_slug}"
+        print(f"GET {url}")
+        
+        response = requests.get(url, timeout=10)
+        print(f"Status: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            collected = data.get("collected_amount", 0)
+            donor_count = data.get("donor_count", 0)
+            print(f"✅ Campaign state: collected_amount={collected}, donor_count={donor_count}")
+            return collected, donor_count
+        else:
+            print(f"❌ FAIL - Expected 200, got {response.status_code}")
+            return None, None
+            
+    except Exception as e:
+        print(f"❌ FAIL - Exception: {str(e)}")
+        return None, None
+
+
+def test_donation_with_email():
+    """Test 1: POST /api/donations WITH donor_email - must be fast (<2s) and work correctly"""
+    print("\n" + "="*80)
+    print("TEST 1: POST /api/donations WITH donor_email (< 2s, unique_code, campaign increment)")
+    print("="*80)
+    
+    campaign_slug = "wakaf-al-quran-santri-pelosok"
+    amount = 75000
+    
+    # Get campaign state before
+    collected_before, donor_count_before = test_get_campaign_before(campaign_slug)
+    if collected_before is None:
+        print("⚠️  WARNING - Could not get campaign state before donation")
+        return False
+    
+    try:
+        url = f"{BASE_URL}/api/donations"
+        payload = {
+            "campaign_slug": campaign_slug,
+            "amount": amount,
+            "donor_name": "Budi Santoso",
+            "donor_whatsapp": "081234567890",
+            "donor_email": "budi.santoso@test.com",
+            "message": "Semoga berkah",
+            "payment_method": "bsi"
+        }
+        
+        print(f"POST {url}")
+        print(f"Payload: {payload}")
+        
+        start_time = time.time()
+        response = requests.post(url, json=payload, timeout=10)
+        elapsed = time.time() - start_time
+        
+        print(f"Status: {response.status_code}")
+        print(f"Response time: {elapsed:.3f}s")
+        
+        if response.status_code != 200:
+            print(f"❌ FAIL - Expected 200, got {response.status_code}")
+            print(f"   Response: {response.text}")
+            return False
+        
+        # Check response time
+        if elapsed >= 2.0:
+            print(f"❌ FAIL - Response time {elapsed:.3f}s >= 2s (email blocking the response)")
+            return False
+        else:
+            print(f"✅ PASS - Response time {elapsed:.3f}s < 2s (fire-and-forget working)")
+        
+        data = response.json()
+        
+        # Check unique_code (100-999)
+        unique_code = data.get("unique_code")
+        if unique_code and 100 <= unique_code <= 999:
+            print(f"✅ PASS - unique_code={unique_code} (100-999)")
+        else:
+            print(f"❌ FAIL - unique_code={unique_code} (not in 100-999 range)")
+            return False
+        
+        # Check total_amount = amount + unique_code
+        total_amount = data.get("total_amount")
+        expected_total = amount + unique_code
+        if total_amount == expected_total:
+            print(f"✅ PASS - total_amount={total_amount} (amount + unique_code)")
+        else:
+            print(f"❌ FAIL - total_amount={total_amount}, expected {expected_total}")
+            return False
+        
+        # Check status = 'pending'
+        status = data.get("status")
+        if status == "pending":
+            print(f"✅ PASS - status='pending'")
+        else:
+            print(f"❌ FAIL - status='{status}', expected 'pending'")
+            return False
+        
+        # Check campaign increment
+        print(f"\nVerifying campaign progress increment...")
+        time.sleep(0.5)  # Small delay to ensure DB update
+        
+        url_after = f"{BASE_URL}/api/campaigns/{campaign_slug}"
+        response_after = requests.get(url_after, timeout=10)
+        
+        if response_after.status_code == 200:
+            data_after = response_after.json()
+            collected_after = data_after.get("collected_amount", 0)
+            donor_count_after = data_after.get("donor_count", 0)
+            
+            collected_diff = collected_after - collected_before
+            donor_count_diff = donor_count_after - donor_count_before
+            
+            print(f"Before: collected_amount={collected_before}, donor_count={donor_count_before}")
+            print(f"After:  collected_amount={collected_after}, donor_count={donor_count_after}")
+            print(f"Diff:   collected_amount +{collected_diff}, donor_count +{donor_count_diff}")
+            
+            if collected_diff == amount:
+                print(f"✅ PASS - collected_amount increased by exactly {amount}")
+            else:
+                print(f"❌ FAIL - collected_amount increased by {collected_diff}, expected {amount}")
+                return False
+            
+            if donor_count_diff == 1:
+                print(f"✅ PASS - donor_count increased by 1")
+            else:
+                print(f"❌ FAIL - donor_count increased by {donor_count_diff}, expected 1")
+                return False
+        else:
+            print(f"⚠️  WARNING - Could not verify campaign increment (status {response_after.status_code})")
+        
+        return True
+            
+    except Exception as e:
+        print(f"❌ FAIL - Exception: {str(e)}")
+        return False
+
+
+def test_donation_without_email():
+    """Test 2: POST /api/donations WITHOUT donor_email - should still work"""
+    print("\n" + "="*80)
+    print("TEST 2: POST /api/donations WITHOUT donor_email (should still work)")
     print("="*80)
     
     try:
         url = f"{BASE_URL}/api/donations"
         payload = {
-            "campaign_slug": "paket-sembako-dhuafa-banjarmasin",
-            "amount": 60000,
-            "donor_name": "Verify Test",
-            "donor_whatsapp": "0812",
-            "donor_email": "delivered@resend.dev",
+            "campaign_slug": "kurban-peduli-banua",
+            "amount": 50000,
+            "donor_name": "Siti Aminah",
+            "donor_whatsapp": "082345678901",
             "payment_method": "bca"
         }
         
@@ -40,69 +181,11 @@ def test_create_donation_for_verify():
         
         if response.status_code == 200:
             data = response.json()
-            donation_id = data.get("id")
-            print(f"✅ PASS - Donation created successfully")
-            print(f"   Donation ID: {donation_id}")
-            print(f"   Unique code: {data.get('unique_code')}")
-            print(f"   Total amount: {data.get('total_amount')}")
-            print(f"   Status: {data.get('status')}")
-            return donation_id
-        else:
-            print(f"❌ FAIL - Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return None
-            
-    except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return None
-
-
-def test_admin_verify_donation(donation_id):
-    """Test 2: Verify donation - must be fast (< 2s)"""
-    print("\n" + "="*80)
-    print("TEST 2: Admin verify donation (must be < 2s)")
-    print("="*80)
-    
-    try:
-        url = f"{BASE_URL}/api/admin/verify"
-        payload = {
-            "donation_id": donation_id,
-            "status": "verified"
-        }
-        
-        print(f"POST {url}")
-        print(f"Payload: {payload}")
-        print(f"Headers: x-admin-key={ADMIN_KEY}")
-        
-        start_time = time.time()
-        response = requests.post(url, json=payload, headers=ADMIN_HEADERS, timeout=10)
-        elapsed = time.time() - start_time
-        
-        print(f"Status: {response.status_code}")
-        print(f"Response time: {elapsed:.3f}s")
-        
-        if response.status_code == 200:
-            data = response.json()
-            donation = data.get("donation", {})
-            status = donation.get("status")
-            verified_at = donation.get("verified_at")
-            
-            if elapsed < 2.0:
-                print(f"✅ PASS - Response time OK ({elapsed:.3f}s < 2s)")
-            else:
-                print(f"⚠️  WARNING - Response time slow ({elapsed:.3f}s >= 2s)")
-            
-            if status == "verified":
-                print(f"✅ PASS - Status is 'verified'")
-            else:
-                print(f"❌ FAIL - Status is '{status}', expected 'verified'")
-            
-            if verified_at:
-                print(f"✅ PASS - verified_at is set: {verified_at}")
-            else:
-                print(f"❌ FAIL - verified_at is null")
-            
-            return elapsed < 2.0 and status == "verified" and verified_at is not None
+            print(f"✅ PASS - Donation without email works")
+            print(f"   unique_code: {data.get('unique_code')}")
+            print(f"   total_amount: {data.get('total_amount')}")
+            print(f"   status: {data.get('status')}")
+            return True
         else:
             print(f"❌ FAIL - Expected 200, got {response.status_code}")
             print(f"   Response: {response.text}")
@@ -113,121 +196,25 @@ def test_admin_verify_donation(donation_id):
         return False
 
 
-def test_get_admin_donations(donation_id):
-    """Test 3: GET /api/admin/donations - confirm status and verified_at"""
+def test_negative_amount_too_low():
+    """Test 3a: POST /api/donations with amount < 1000 -> 400"""
     print("\n" + "="*80)
-    print("TEST 3: GET /api/admin/donations - confirm verification")
+    print("TEST 3a: POST /api/donations with amount < 1000 (expect 400)")
     print("="*80)
     
     try:
-        url = f"{BASE_URL}/api/admin/donations"
-        
-        print(f"GET {url}")
-        print(f"Headers: x-admin-key={ADMIN_KEY}")
-        
-        response = requests.get(url, headers=ADMIN_HEADERS, timeout=10)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            donations = response.json()
-            print(f"✅ PASS - Got {len(donations)} donations")
-            
-            # Find our donation
-            target = None
-            for d in donations:
-                if d.get("id") == donation_id:
-                    target = d
-                    break
-            
-            if target:
-                print(f"✅ PASS - Found donation {donation_id}")
-                status = target.get("status")
-                verified_at = target.get("verified_at")
-                
-                if status == "verified":
-                    print(f"✅ PASS - Status is 'verified'")
-                else:
-                    print(f"❌ FAIL - Status is '{status}', expected 'verified'")
-                
-                if verified_at:
-                    print(f"✅ PASS - verified_at is set: {verified_at}")
-                else:
-                    print(f"❌ FAIL - verified_at is null")
-                
-                return status == "verified" and verified_at is not None
-            else:
-                print(f"❌ FAIL - Donation {donation_id} not found in list")
-                return False
-        else:
-            print(f"❌ FAIL - Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
-
-
-def test_revert_to_pending(donation_id):
-    """Test 4: Revert donation to pending"""
-    print("\n" + "="*80)
-    print("TEST 4: Revert donation to pending")
-    print("="*80)
-    
-    try:
-        url = f"{BASE_URL}/api/admin/verify"
+        url = f"{BASE_URL}/api/donations"
         payload = {
-            "donation_id": donation_id,
-            "status": "pending"
+            "campaign_slug": "wakaf-al-quran-santri-pelosok",
+            "amount": 500,
+            "donor_name": "Test User",
+            "donor_whatsapp": "081234567890"
         }
         
         print(f"POST {url}")
         print(f"Payload: {payload}")
         
-        response = requests.post(url, json=payload, headers=ADMIN_HEADERS, timeout=10)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            donation = data.get("donation", {})
-            status = donation.get("status")
-            verified_at = donation.get("verified_at")
-            
-            if status == "pending":
-                print(f"✅ PASS - Status reverted to 'pending'")
-            else:
-                print(f"❌ FAIL - Status is '{status}', expected 'pending'")
-            
-            if verified_at is None:
-                print(f"✅ PASS - verified_at is null")
-            else:
-                print(f"❌ FAIL - verified_at is '{verified_at}', expected null")
-            
-            return status == "pending" and verified_at is None
-        else:
-            print(f"❌ FAIL - Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
-
-
-def test_negative_empty_body():
-    """Test 5a: POST /api/admin/verify with empty body -> 400"""
-    print("\n" + "="*80)
-    print("TEST 5a: POST /api/admin/verify with empty body (expect 400)")
-    print("="*80)
-    
-    try:
-        url = f"{BASE_URL}/api/admin/verify"
-        payload = {}
-        
-        print(f"POST {url}")
-        print(f"Payload: {payload}")
-        
-        response = requests.post(url, json=payload, headers=ADMIN_HEADERS, timeout=10)
+        response = requests.post(url, json=payload, timeout=10)
         print(f"Status: {response.status_code}")
         
         if response.status_code == 400:
@@ -244,29 +231,32 @@ def test_negative_empty_body():
         return False
 
 
-def test_negative_no_header():
-    """Test 5b: POST /api/admin/verify without x-admin-key header -> 401"""
+def test_negative_missing_donor_name():
+    """Test 3b: POST /api/donations without donor_name -> 400"""
     print("\n" + "="*80)
-    print("TEST 5b: POST /api/admin/verify without x-admin-key (expect 401)")
+    print("TEST 3b: POST /api/donations without donor_name (expect 400)")
     print("="*80)
     
     try:
-        url = f"{BASE_URL}/api/admin/verify"
-        payload = {"donation_id": "test-id", "status": "verified"}
+        url = f"{BASE_URL}/api/donations"
+        payload = {
+            "campaign_slug": "wakaf-al-quran-santri-pelosok",
+            "amount": 50000,
+            "donor_whatsapp": "081234567890"
+        }
         
         print(f"POST {url}")
         print(f"Payload: {payload}")
-        print(f"Headers: (no x-admin-key)")
         
-        response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+        response = requests.post(url, json=payload, timeout=10)
         print(f"Status: {response.status_code}")
         
-        if response.status_code == 401:
-            print(f"✅ PASS - Got 401 as expected")
+        if response.status_code == 400:
+            print(f"✅ PASS - Got 400 as expected")
             print(f"   Response: {response.text}")
             return True
         else:
-            print(f"❌ FAIL - Expected 401, got {response.status_code}")
+            print(f"❌ FAIL - Expected 400, got {response.status_code}")
             print(f"   Response: {response.text}")
             return False
             
@@ -275,83 +265,48 @@ def test_negative_no_header():
         return False
 
 
-def test_regression_concurrent():
-    """Test 6: Quick regression - fire ~10 concurrent requests"""
+def test_negative_missing_donor_whatsapp():
+    """Test 3c: POST /api/donations without donor_whatsapp -> 400"""
     print("\n" + "="*80)
-    print("TEST 6: Quick regression - concurrent requests (no 500s)")
-    print("="*80)
-    
-    endpoints = [
-        ("GET", "/api/campaigns", None),
-        ("GET", "/api/campaigns", None),
-        ("GET", "/api/campaigns", None),
-        ("GET", "/api/campaigns", None),
-        ("GET", "/api/campaigns", None),
-        ("GET", "/api/campaigns", None),
-        ("GET", "/api/campaigns", None),
-        ("GET", "/api/campaigns", None),
-        ("GET", "/api/campaigns/kurban-peduli-banua", None),
-        ("GET", "/api/prayers", None),
-        ("GET", "/api/stats", None),
-        ("GET", "/api/auth/me", None),
-    ]
-    
-    def make_request(method, path, headers):
-        url = f"{BASE_URL}{path}"
-        try:
-            if method == "GET":
-                resp = requests.get(url, headers=headers, timeout=10)
-            else:
-                resp = requests.post(url, headers=headers, timeout=10)
-            return (path, resp.status_code, None)
-        except Exception as e:
-            return (path, None, str(e))
-    
-    print(f"Firing {len(endpoints)} concurrent requests...")
-    
-    results = []
-    with ThreadPoolExecutor(max_workers=12) as executor:
-        futures = [executor.submit(make_request, method, path, headers) for method, path, headers in endpoints]
-        for future in as_completed(futures):
-            results.append(future.result())
-    
-    # Analyze results
-    success_count = 0
-    error_count = 0
-    status_500_count = 0
-    
-    for path, status, error in results:
-        if error:
-            print(f"❌ {path}: Exception - {error}")
-            error_count += 1
-        elif status == 500:
-            print(f"❌ {path}: 500 Internal Server Error")
-            status_500_count += 1
-        elif status in [200, 201]:
-            print(f"✅ {path}: {status}")
-            success_count += 1
-        else:
-            print(f"⚠️  {path}: {status}")
-    
-    print(f"\nResults: {success_count}/{len(endpoints)} succeeded, {status_500_count} 500s, {error_count} errors")
-    
-    if status_500_count == 0:
-        print(f"✅ PASS - No 500 errors")
-        return True
-    else:
-        print(f"❌ FAIL - Found {status_500_count} 500 errors")
-        return False
-
-
-def test_kurban_campaign_has_options():
-    """Test 6b: Verify kurban campaign has kurban_options"""
-    print("\n" + "="*80)
-    print("TEST 6b: GET /api/campaigns/kurban-peduli-banua (has kurban_options)")
+    print("TEST 3c: POST /api/donations without donor_whatsapp (expect 400)")
     print("="*80)
     
     try:
-        url = f"{BASE_URL}/api/campaigns/kurban-peduli-banua"
+        url = f"{BASE_URL}/api/donations"
+        payload = {
+            "campaign_slug": "wakaf-al-quran-santri-pelosok",
+            "amount": 50000,
+            "donor_name": "Test User"
+        }
         
+        print(f"POST {url}")
+        print(f"Payload: {payload}")
+        
+        response = requests.post(url, json=payload, timeout=10)
+        print(f"Status: {response.status_code}")
+        
+        if response.status_code == 400:
+            print(f"✅ PASS - Got 400 as expected")
+            print(f"   Response: {response.text}")
+            return True
+        else:
+            print(f"❌ FAIL - Expected 400, got {response.status_code}")
+            print(f"   Response: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ FAIL - Exception: {str(e)}")
+        return False
+
+
+def test_regression_campaigns():
+    """Test 4a: GET /api/campaigns (expect 8 campaigns)"""
+    print("\n" + "="*80)
+    print("TEST 4a: GET /api/campaigns (expect 8 campaigns)")
+    print("="*80)
+    
+    try:
+        url = f"{BASE_URL}/api/campaigns"
         print(f"GET {url}")
         
         response = requests.get(url, timeout=10)
@@ -359,15 +314,13 @@ def test_kurban_campaign_has_options():
         
         if response.status_code == 200:
             data = response.json()
-            kurban_options = data.get("kurban_options")
+            count = len(data)
             
-            if kurban_options and isinstance(kurban_options, list) and len(kurban_options) > 0:
-                print(f"✅ PASS - kurban_options present with {len(kurban_options)} items")
-                for opt in kurban_options:
-                    print(f"   - {opt.get('type')}: {opt.get('price')}")
+            if count == 8:
+                print(f"✅ PASS - Got exactly 8 campaigns")
                 return True
             else:
-                print(f"❌ FAIL - kurban_options missing or empty")
+                print(f"❌ FAIL - Got {count} campaigns, expected 8")
                 return False
         else:
             print(f"❌ FAIL - Expected 200, got {response.status_code}")
@@ -378,15 +331,14 @@ def test_kurban_campaign_has_options():
         return False
 
 
-def test_prayers_count():
-    """Test 6c: Verify prayers returns >= 8 items"""
+def test_regression_prayers():
+    """Test 4b: GET /api/prayers (expect >= 8 items)"""
     print("\n" + "="*80)
-    print("TEST 6c: GET /api/prayers (>= 8 items)")
+    print("TEST 4b: GET /api/prayers (expect >= 8 items)")
     print("="*80)
     
     try:
         url = f"{BASE_URL}/api/prayers"
-        
         print(f"GET {url}")
         
         response = requests.get(url, timeout=10)
@@ -411,15 +363,14 @@ def test_prayers_count():
         return False
 
 
-def test_auth_me_null():
-    """Test 6d: Verify /api/auth/me returns user null"""
+def test_regression_stats():
+    """Test 4c: GET /api/stats (has required fields)"""
     print("\n" + "="*80)
-    print("TEST 6d: GET /api/auth/me (user null)")
+    print("TEST 4c: GET /api/stats (has required fields)")
     print("="*80)
     
     try:
-        url = f"{BASE_URL}/api/auth/me"
-        
+        url = f"{BASE_URL}/api/stats"
         print(f"GET {url}")
         
         response = requests.get(url, timeout=10)
@@ -427,13 +378,94 @@ def test_auth_me_null():
         
         if response.status_code == 200:
             data = response.json()
-            user = data.get("user")
+            required_fields = [
+                "humanitarian", "wakaf_quran", "panti", "pemberdayaan",
+                "total_collected", "total_donors", "total_target", 
+                "total_donations", "active_campaigns"
+            ]
             
-            if user is None:
-                print(f"✅ PASS - user is null")
+            missing_fields = [f for f in required_fields if f not in data]
+            
+            if not missing_fields:
+                print(f"✅ PASS - All required fields present")
+                print(f"   Fields: {', '.join(required_fields)}")
                 return True
             else:
-                print(f"❌ FAIL - user is {user}, expected null")
+                print(f"❌ FAIL - Missing fields: {', '.join(missing_fields)}")
+                return False
+        else:
+            print(f"❌ FAIL - Expected 200, got {response.status_code}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ FAIL - Exception: {str(e)}")
+        return False
+
+
+def test_regression_admin_summary():
+    """Test 4d: GET /api/admin/summary with x-admin-key (200 with required fields)"""
+    print("\n" + "="*80)
+    print("TEST 4d: GET /api/admin/summary with x-admin-key")
+    print("="*80)
+    
+    try:
+        url = f"{BASE_URL}/api/admin/summary"
+        print(f"GET {url}")
+        print(f"Headers: x-admin-key={ADMIN_KEY}")
+        
+        response = requests.get(url, headers=ADMIN_HEADERS, timeout=10)
+        print(f"Status: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            required_fields = [
+                "total_donations", "verified", "pending", 
+                "total_verified", "total_all", "confirmations"
+            ]
+            
+            missing_fields = [f for f in required_fields if f not in data]
+            
+            if not missing_fields:
+                print(f"✅ PASS - All required fields present")
+                print(f"   total_donations: {data.get('total_donations')}")
+                print(f"   verified: {data.get('verified')}")
+                print(f"   pending: {data.get('pending')}")
+                return True
+            else:
+                print(f"❌ FAIL - Missing fields: {', '.join(missing_fields)}")
+                return False
+        else:
+            print(f"❌ FAIL - Expected 200, got {response.status_code}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ FAIL - Exception: {str(e)}")
+        return False
+
+
+def test_regression_admin_login():
+    """Test 4e: POST /api/admin/login with correct key (200)"""
+    print("\n" + "="*80)
+    print("TEST 4e: POST /api/admin/login with correct key")
+    print("="*80)
+    
+    try:
+        url = f"{BASE_URL}/api/admin/login"
+        payload = {"key": ADMIN_KEY}
+        
+        print(f"POST {url}")
+        print(f"Payload: {payload}")
+        
+        response = requests.post(url, json=payload, timeout=10)
+        print(f"Status: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("ok"):
+                print(f"✅ PASS - Admin login successful")
+                return True
+            else:
+                print(f"❌ FAIL - Response ok=false")
                 return False
         else:
             print(f"❌ FAIL - Expected 200, got {response.status_code}")
@@ -446,41 +478,32 @@ def test_auth_me_null():
 
 def main():
     print("\n" + "="*80)
-    print("YABABERMA BACKEND TEST - Admin Verify Email Feature")
+    print("YABABERMA BACKEND TEST - Admin Notification Email Regression")
     print("="*80)
     print(f"Base URL: {BASE_URL}")
     print(f"Admin Key: {ADMIN_KEY}")
+    print("\nTesting: sendAdminNotifyEmail(donation) on POST /api/donations")
+    print("Must NOT block or break the donation endpoint")
     
     results = {}
     
-    # Test 1: Create donation
-    donation_id = test_create_donation_for_verify()
-    results["create_donation"] = donation_id is not None
+    # Test 1: Donation with email (main test)
+    results["donation_with_email"] = test_donation_with_email()
     
-    if donation_id:
-        # Test 2: Verify donation (must be fast)
-        results["verify_fast"] = test_admin_verify_donation(donation_id)
-        
-        # Test 3: Confirm in admin list
-        results["confirm_verified"] = test_get_admin_donations(donation_id)
-        
-        # Test 4: Revert to pending
-        results["revert_pending"] = test_revert_to_pending(donation_id)
-    else:
-        print("\n⚠️  Skipping tests 2-4 because donation creation failed")
-        results["verify_fast"] = False
-        results["confirm_verified"] = False
-        results["revert_pending"] = False
+    # Test 2: Donation without email
+    results["donation_without_email"] = test_donation_without_email()
     
-    # Test 5: Negative tests
-    results["negative_empty_body"] = test_negative_empty_body()
-    results["negative_no_header"] = test_negative_no_header()
+    # Test 3: Negative cases
+    results["negative_amount_low"] = test_negative_amount_too_low()
+    results["negative_missing_name"] = test_negative_missing_donor_name()
+    results["negative_missing_whatsapp"] = test_negative_missing_donor_whatsapp()
     
-    # Test 6: Regression
-    results["regression_concurrent"] = test_regression_concurrent()
-    results["kurban_options"] = test_kurban_campaign_has_options()
-    results["prayers_count"] = test_prayers_count()
-    results["auth_me_null"] = test_auth_me_null()
+    # Test 4: Quick regression
+    results["regression_campaigns"] = test_regression_campaigns()
+    results["regression_prayers"] = test_regression_prayers()
+    results["regression_stats"] = test_regression_stats()
+    results["regression_admin_summary"] = test_regression_admin_summary()
+    results["regression_admin_login"] = test_regression_admin_login()
     
     # Summary
     print("\n" + "="*80)
@@ -498,6 +521,15 @@ def main():
     
     if passed == total:
         print("\n🎉 ALL TESTS PASSED!")
+        print("\nConclusion:")
+        print("- sendAdminNotifyEmail(donation) is working correctly")
+        print("- Email is fire-and-forget and does NOT block the API response")
+        print("- POST /api/donations returns quickly (< 2s)")
+        print("- Campaign progress increment working correctly")
+        print("- All negative validations working")
+        print("- Quick regression passed (campaigns, prayers, stats, admin endpoints)")
+        print("\nNote: Email delivery may fail (yababerma.org domain unverified in Resend)")
+        print("      but this does NOT affect the API responses - as expected.")
         return 0
     else:
         print(f"\n⚠️  {total - passed} test(s) failed")

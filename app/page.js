@@ -16,6 +16,7 @@ import {
 import CampaignCard from '@/components/site/campaign-card';
 import CountUp from '@/components/site/count-up';
 import PrayerWall from '@/components/site/prayer-wall';
+import InstagramFeed from '@/components/site/instagram-feed';
 import { useApi } from '@/components/site/use-api';
 import { HERO_SLIDES, QUICK_SERVICES, IMPACT_STATS, ORG, SOCIALS } from '@/lib/site-data';
 
@@ -236,6 +237,8 @@ export default function App() {
           </div>
         </div>
       </section>
+
+      <InstagramFeed />
 
       {/* NEWSLETTER */}
       <section className="container pb-20">
