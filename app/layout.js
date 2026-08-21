@@ -2,6 +2,7 @@ import './globals.css'
 import { Providers } from './providers'
 import Navbar from '@/components/site/navbar'
 import Footer from '@/components/site/footer'
+import FloatingWa from '@/components/site/floating-wa'
 import { Toaster } from '@/components/ui/sonner'
 
 export const metadata = {
@@ -23,6 +24,7 @@ export default function RootLayout({ children }) {
           <Navbar />
           <main className="min-h-screen">{children}</main>
           <Footer />
+          <FloatingWa />
           <Toaster richColors position="top-center" />
         </Providers>
       </body>

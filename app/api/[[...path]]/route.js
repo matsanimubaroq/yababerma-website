@@ -437,6 +437,30 @@ async function sendAdminOtpEmail(otp) {
   } catch (e) { console.error('Email(otp) exception:', e?.message); return false }
 }
 
+// Fire-and-forget WhatsApp thank-you via Fonnte (inert unless FONNTE_TOKEN is set)
+async function sendWhatsAppThankYou(donation) {
+  const token = process.env.FONNTE_TOKEN
+  if (!token || !donation || !donation.donor_whatsapp) return false
+  let value = String(donation.donor_whatsapp).trim().replace(/[\s().+-]/g, '')
+  if (value.startsWith('62')) value = '0' + value.slice(2)
+  if (!/^08\d{7,14}$/.test(value)) { console.error('Fonnte: nomor WA tidak valid:', donation.donor_whatsapp); return false }
+  const name = donation.is_anonymous ? 'Sahabat Donatur' : (donation.donor_name || 'Sahabat Donatur')
+  const amount = 'Rp ' + Number(donation.amount || 0).toLocaleString('id-ID')
+  const program = donation.campaign_title || 'program kebaikan'
+  const message = `Assalamu'alaikum ${name} \uD83E\uDD0D\n\nAlhamdulillah, donasi Anda sebesar *${amount}* untuk *${program}* telah kami *VERIFIKASI* dan diterima oleh Yayasan Banua Berkah Mandiri.\n\nSemoga menjadi amal jariyah yang berkah dan berlipat ganda, serta menjadi pemberat timbangan kebaikan Anda. Aamiin \uD83E\uDD32\n\nTerima kasih atas kepercayaan & kebaikan Anda.\n\n\u2014 Yayasan Banua Berkah Mandiri\nyababerma.org`
+  try {
+    const form = new FormData()
+    form.append('target', value)
+    form.append('message', message)
+    form.append('countryCode', '62')
+    const res = await fetch('https://api.fonnte.com/send', { method: 'POST', headers: { Authorization: token }, body: form, cache: 'no-store', signal: AbortSignal.timeout(8000) })
+    const result = await res.json().catch(() => ({}))
+    if (!res.ok || result.status === false) { console.error('Fonnte gagal:', result.reason || result.detail || res.status); return false }
+    console.info('Fonnte terkirim (queued):', JSON.stringify(result.id || result.requestid || ''))
+    return true
+  } catch (e) { console.error('Fonnte exception:', e?.message); return false }
+}
+
 // ---------------- Router ----------------
 async function handleRoute(request, { params }) {
   const { path = [] } = await params
@@ -793,8 +817,26 @@ async function handleRoute(request, { params }) {
         const status = body.status === 'verified' ? 'verified' : 'pending'
         await db.collection('donations').updateOne({ id: body.donation_id }, { $set: { status, verified_at: status === 'verified' ? new Date().toISOString() : null } })
         const d = await db.collection('donations').findOne({ id: body.donation_id })
-        if (d && status === 'verified') sendVerifiedEmail(clean(d)).catch(() => {})
+        if (d && status === 'verified') {
+          sendVerifiedEmail(clean(d)).catch(() => {})
+          // Fire-and-forget WhatsApp thank-you (idempotent) via Fonnte
+          if (!d.wa_thanked_at) {
+            sendWhatsAppThankYou(clean(d)).then((ok) => {
+              if (ok) db.collection('donations').updateOne({ id: d.id }, { $set: { wa_thanked_at: new Date().toISOString() } }).catch(() => {})
+            }).catch(() => {})
+          }
+        }
         return handleCORS(NextResponse.json({ ok: true, donation: d ? clean(d) : null }))
+      }
+
+      // Change admin password (already authenticated via x-admin-key guard above)
+      if (route === '/admin/change-password' && method === 'POST') {
+        const body = await request.json()
+        const newPass = String(body.new_password || '')
+        if (newPass.length < 6) return handleCORS(NextResponse.json({ error: 'Password baru minimal 6 karakter.' }, { status: 400 }))
+        if (newPass === provided) return handleCORS(NextResponse.json({ error: 'Password baru harus berbeda dari yang sekarang.' }, { status: 400 }))
+        await db.collection('settings').updateOne({ id: 'admin_auth' }, { $set: { id: 'admin_auth', password: newPass, updated_at: new Date().toISOString() } }, { upsert: true })
+        return handleCORS(NextResponse.json({ ok: true }))
       }
 
       // Bulk delete (admin) — donations or confirmations

@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { formatRupiah } from '@/lib/site-data';
 import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint, Search, Trash2, LayoutGrid, List as ListIcon, BarChart3, ImageDown, SlidersHorizontal, Eye, EyeOff, Mail, ArrowLeft, KeyRound } from 'lucide-react';
@@ -37,6 +38,12 @@ export default function AdminPage() {
   const [showNewPass, setShowNewPass] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
+  // Change password (in-panel)
+  const [changeOpen, setChangeOpen] = useState(false);
+  const [changeNew, setChangeNew] = useState('');
+  const [changeConfirm, setChangeConfirm] = useState('');
+  const [showChange, setShowChange] = useState(false);
+  const [changeBusy, setChangeBusy] = useState(false);
   // Toolbar / filters / views / selection
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('newest');
@@ -110,6 +117,22 @@ export default function AdminPage() {
   };
 
   const logout = () => { localStorage.removeItem(KEY_STORAGE); setAuthed(false); setKey(''); setDonations([]); setConfs([]); setSummary(null); setKurban([]); setSelDon([]); setSelConf([]); };
+
+  const changePassword = async () => {
+    if (changeNew.length < 6) { toast.error('Password baru minimal 6 karakter'); return; }
+    if (changeNew !== changeConfirm) { toast.error('Konfirmasi password tidak cocok'); return; }
+    setChangeBusy(true);
+    try {
+      const r = await fetch('/api/admin/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': key }, body: JSON.stringify({ new_password: changeNew }) });
+      const data = await r.json();
+      if (r.ok) {
+        localStorage.setItem(KEY_STORAGE, changeNew);
+        setKey(changeNew);
+        setChangeNew(''); setChangeConfirm(''); setChangeOpen(false);
+        toast.success('Password admin berhasil diubah');
+      } else toast.error(data.error || 'Gagal mengubah password');
+    } catch { toast.error('Terjadi kesalahan'); } finally { setChangeBusy(false); }
+  };
 
   const setKurbanField = (idx, field, value) => setKurban((arr) => arr.map((o, i) => (i === idx ? { ...o, [field]: value } : o)));
 
@@ -310,9 +333,36 @@ export default function AdminPage() {
           <div className="flex gap-2 flex-wrap">
             <Button variant="outline" className="rounded-xl" onClick={exportCsv}><Download className="w-4 h-4 mr-2" />Ekspor CSV</Button>
             <Button variant="outline" className="rounded-xl" onClick={() => loadAll(key)}><RefreshCw className="w-4 h-4 mr-2" />Segarkan</Button>
+            <Button variant="outline" className="rounded-xl" onClick={() => setChangeOpen(true)}><KeyRound className="w-4 h-4 mr-2" />Ganti Password</Button>
             <Button variant="outline" className="rounded-xl" onClick={logout}><LogOut className="w-4 h-4 mr-2" />Keluar</Button>
           </div>
         </div>
+
+        <Dialog open={changeOpen} onOpenChange={setChangeOpen}>
+          <DialogContent className="rounded-2xl sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><KeyRound className="w-5 h-5 text-brand-green" />Ganti Password Admin</DialogTitle>
+              <DialogDescription>Buat password admin baru. Anda akan tetap masuk dengan password baru ini.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-sm">Password Baru</Label>
+                <div className="relative mt-1">
+                  <Input type={showChange ? 'text' : 'password'} value={changeNew} onChange={(e) => setChangeNew(e.target.value)} className="rounded-xl pr-11" placeholder="Minimal 6 karakter" />
+                  <button type="button" onClick={() => setShowChange((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-brand-ink">{showChange ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm">Konfirmasi Password Baru</Label>
+                <Input type={showChange ? 'text' : 'password'} value={changeConfirm} onChange={(e) => setChangeConfirm(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && changePassword()} className="rounded-xl mt-1" placeholder="Ulangi password baru" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" className="rounded-xl" onClick={() => setChangeOpen(false)}>Batal</Button>
+              <Button className="rounded-xl" disabled={changeBusy || changeNew.length < 6 || changeNew !== changeConfirm} onClick={changePassword}>{changeBusy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <KeyRound className="w-4 h-4 mr-2" />}Simpan Password Baru</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {stat.map((s) => {
