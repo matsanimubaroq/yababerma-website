@@ -82,6 +82,42 @@ async function sendDonationEmail(donation) {
   } catch (e) { console.error('Email exception:', e?.message) }
 }
 
+async function sendVerifiedEmail(donation) {
+  if (!resend || !donation.donor_email) return
+  const name = escapeHtml(donation.is_anonymous ? 'Sahabat Donatur' : (donation.donor_name || 'Sahabat Donatur'))
+  const program = escapeHtml(donation.campaign_title || 'Donasi Umum')
+  const date = new Date(donation.verified_at || Date.now()).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+  const html = `<!doctype html><html><body style="margin:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#1E293B">
+  <div style="max-width:560px;margin:0 auto;padding:24px">
+    <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
+      <div style="background:#00A651;padding:24px;text-align:center">
+        <img src="${ORG_LOGO}" width="64" height="64" style="background:#fff;border-radius:50%;padding:6px" alt="YABABERMA"/>
+        <h1 style="color:#ffffff;font-size:18px;margin:12px 0 0">Yayasan Banua Berkah Mandiri</h1>
+      </div>
+      <div style="padding:28px">
+        <div style="text-align:center;font-size:44px">&#9989;</div>
+        <h2 style="margin:8px 0 6px;font-size:20px;text-align:center">Donasi Anda Telah Terverifikasi</h2>
+        <p style="color:#475569;margin:0 0 20px;line-height:1.6;text-align:center">Alhamdulillah ${name}, donasi Anda telah kami terima &amp; verifikasi. Jazaakumullahu khairan atas kepercayaan &amp; kebaikannya.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <tr><td style="padding:8px 0;color:#64748b">Program</td><td style="padding:8px 0;text-align:right;font-weight:600">${program}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Nominal</td><td style="padding:8px 0;text-align:right;font-weight:600">${rp(donation.amount)}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Tanggal Verifikasi</td><td style="padding:8px 0;text-align:right;font-weight:600">${date}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">No. Referensi</td><td style="padding:8px 0;text-align:right;font-weight:600">${escapeHtml(donation.id)}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Status</td><td style="padding:8px 0;text-align:right"><span style="background:#e6f7ee;color:#00A651;padding:3px 10px;border-radius:999px;font-weight:700;font-size:12px">TERVERIFIKASI</span></td></tr>
+        </table>
+        <div style="background:#e6f7ee;border-radius:12px;padding:14px;margin-top:16px;font-size:13px;color:#475569;text-align:center">Insya Allah donasi Anda kami salurkan secara amanah. Anda dapat memantau &amp; mengunduh kuitansi resmi di Portal Donatur.</div>
+        <p style="color:#94a3b8;font-size:12px;margin-top:20px;text-align:center">Semoga menjadi amal jariyah yang berkah. Aamiin.<br/>&copy; 2026 Yayasan Banua Berkah Mandiri</p>
+      </div>
+    </div>
+  </div>
+</body></html>`
+  const text = `Alhamdulillah, donasi Anda untuk ${donation.campaign_title} sebesar ${rp(donation.amount)} telah TERVERIFIKASI pada ${date}. No. Referensi: ${donation.id}. Jazaakumullahu khairan. - Yayasan Banua Berkah Mandiri`
+  try {
+    const { error } = await resend.emails.send({ from: process.env.MAIL_FROM, to: [donation.donor_email], subject: 'Donasi Anda Telah Terverifikasi \u2014 YABABERMA', html, text })
+    if (error) console.error('Resend(verified) error:', error?.message || JSON.stringify(error))
+  } catch (e) { console.error('Email(verified) exception:', e?.message) }
+}
+
 // ---------------- Seed data ----------------
 function daysFromNow(n) { return new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString() }
 
@@ -536,6 +572,7 @@ async function handleRoute(request, { params }) {
         const status = body.status === 'verified' ? 'verified' : 'pending'
         await db.collection('donations').updateOne({ id: body.donation_id }, { $set: { status, verified_at: status === 'verified' ? new Date().toISOString() : null } })
         const d = await db.collection('donations').findOne({ id: body.donation_id })
+        if (d && status === 'verified') sendVerifiedEmail(clean(d)).catch(() => {})
         return handleCORS(NextResponse.json({ ok: true, donation: d ? clean(d) : null }))
       }
     }

@@ -10,7 +10,8 @@ import { Switch } from '@/components/ui/switch';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { formatRupiah, ORG } from '@/lib/site-data';
-import { Wallet, HeartHandshake, Download, LogIn, Bell, HandCoins, Loader2 } from 'lucide-react';
+import { isKurbanDonation, downloadKurbanCertificate } from '@/lib/receipts';
+import { Wallet, HeartHandshake, Download, LogIn, Bell, HandCoins, Loader2, Award } from 'lucide-react';
 
 export default function DashboardPage() {
   const { user, loading, login, logout, refresh } = useAuth();
@@ -162,7 +163,10 @@ export default function DashboardPage() {
                           : <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-0 hover:bg-amber-100">Pending</Badge>}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" className="rounded-lg text-brand-blue hover:text-brand-blue" onClick={() => downloadReceipt(d)}><Download className="w-4 h-4 mr-1" />PDF</Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="sm" className="rounded-lg text-brand-blue hover:text-brand-blue" onClick={() => downloadReceipt(d)}><Download className="w-4 h-4 mr-1" />PDF</Button>
+                          {isKurbanDonation(d) && <Button variant="ghost" size="sm" className="rounded-lg text-brand-green hover:text-brand-green" onClick={() => downloadKurbanCertificate(d)}><Award className="w-4 h-4 mr-1" />Sertifikat</Button>}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

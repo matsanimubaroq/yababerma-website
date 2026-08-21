@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { formatRupiah } from '@/lib/site-data';
-import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut } from 'lucide-react';
+import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download } from 'lucide-react';
 
 const KEY_STORAGE = 'yb_admin_key';
 
@@ -62,6 +62,23 @@ export default function AdminPage() {
 
   const logout = () => { localStorage.removeItem(KEY_STORAGE); setAuthed(false); setKey(''); setDonations([]); setConfs([]); setSummary(null); };
 
+  const exportCsv = () => {
+    if (!donations.length) { toast.error('Tidak ada data untuk diekspor'); return; }
+    const headers = ['Tanggal', 'Nama', 'Anonim', 'WhatsApp', 'Email', 'Program', 'Nominal', 'KodeUnik', 'TotalTransfer', 'Metode', 'Status', 'ID'];
+    const rows = donations.map((d) => [
+      new Date(d.created_at).toLocaleString('id-ID'), d.donor_name || '', d.is_anonymous ? 'Ya' : 'Tidak',
+      d.donor_whatsapp || '', d.donor_email || '', d.campaign_title || '', d.amount || 0, d.unique_code || '',
+      d.total_amount || 0, d.payment_method || '', d.status || '', d.id,
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `donasi-yababerma-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Data donasi diekspor ke CSV');
+  };
+
   if (!authed) {
     return (
       <div className="container py-24">
@@ -94,7 +111,8 @@ export default function AdminPage() {
             <div className="w-11 h-11 rounded-xl bg-brand-green text-white flex items-center justify-center"><ShieldCheck className="w-6 h-6" /></div>
             <div><h1 className="text-xl font-extrabold text-brand-ink">Panel Admin</h1><p className="text-sm text-muted-foreground">Verifikasi donasi &amp; konfirmasi transfer</p></div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" className="rounded-xl" onClick={exportCsv}><Download className="w-4 h-4 mr-2" />Ekspor CSV</Button>
             <Button variant="outline" className="rounded-xl" onClick={() => loadAll(key)}><RefreshCw className="w-4 h-4 mr-2" />Segarkan</Button>
             <Button variant="outline" className="rounded-xl" onClick={logout}><LogOut className="w-4 h-4 mr-2" />Keluar</Button>
           </div>

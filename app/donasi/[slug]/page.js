@@ -9,7 +9,21 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatRupiah, daysLeft, CATEGORY_LABEL } from '@/lib/site-data';
-import { Users, Clock, Target, ArrowLeft, HeartHandshake, MessageSquareQuote, History } from 'lucide-react';
+import { Users, Clock, Target, ArrowLeft, HeartHandshake, MessageSquareQuote, History, PieChart, ShieldCheck } from 'lucide-react';
+
+const ALLOC_DEFAULT = {
+  zakat: [['Penyaluran untuk 8 asnaf', 85], ['Hak amil', 10], ['Operasional program', 5]],
+  wakaf: [['Pengadaan mushaf & aset wakaf', 88], ['Distribusi ke penerima', 8], ['Operasional', 4]],
+  sedekah: [['Program & bantuan langsung', 85], ['Distribusi & logistik', 9], ['Operasional', 6]],
+  fidyah: [['Paket makanan fakir miskin', 90], ['Distribusi', 6], ['Operasional', 4]],
+  kurban: [['Pengadaan hewan kurban', 85], ['Penyembelihan & distribusi', 10], ['Operasional', 5]],
+  bencana: [['Logistik & evakuasi darurat', 80], ['Relawan & transportasi', 13], ['Operasional', 7]],
+  pendidikan: [['Beasiswa & biaya belajar', 84], ['Honor pengajar', 10], ['Operasional', 6]],
+};
+function allocationFor(c) {
+  if (c && Array.isArray(c.allocation) && c.allocation.length) return c.allocation.map((a) => [a.label, a.percent]);
+  return ALLOC_DEFAULT[c && c.category] || ALLOC_DEFAULT.sedekah;
+}
 
 export default function CampaignDetailPage() {
   const params = useParams();
@@ -67,6 +81,24 @@ export default function CampaignDetailPage() {
               <h2 className="font-heading font-bold text-lg text-brand-ink flex items-center gap-2"><HeartHandshake className="w-5 h-5 text-brand-green" />Tentang Program Ini</h2>
               <div className="prose prose-sm max-w-none mt-4 space-y-3 text-brand-ink/90 leading-relaxed">
                 {(c.story || []).map((p, i) => <p key={i}>{p}</p>)}
+              </div>
+            </Card>
+
+            {/* LAPORAN PENYALURAN */}
+            <Card className="rounded-2xl p-6 border-border bg-white">
+              <h2 className="font-heading font-bold text-lg text-brand-ink flex items-center gap-2 mb-1"><PieChart className="w-5 h-5 text-brand-blue" />Laporan Penyaluran Dana</h2>
+              <p className="text-sm text-muted-foreground mb-4">Rincian alokasi dana program secara transparan &amp; amanah.</p>
+              <div className="space-y-4">
+                {allocationFor(c).map(([label, pctv], i) => (
+                  <div key={i}>
+                    <div className="flex justify-between text-sm mb-1"><span className="text-brand-ink">{label}</span><span className="font-semibold text-brand-green">{pctv}%</span></div>
+                    <Progress value={pctv} className="h-2" />
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-start gap-2 text-xs text-muted-foreground bg-brand-bluelight/40 rounded-xl p-3 mt-4">
+                <ShieldCheck className="w-4 h-4 text-brand-blue shrink-0 mt-0.5" />
+                Laporan lengkap &amp; dokumentasi penyaluran dikirimkan berkala kepada para donatur. InsyaAllah amanah.
               </div>
             </Card>
 

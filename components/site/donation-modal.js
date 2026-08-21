@@ -8,8 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Check, Copy, Loader2, ArrowLeft, Heart, ShieldCheck, MessageCircle, PartyPopper } from 'lucide-react';
+import { Check, Copy, Loader2, ArrowLeft, Heart, ShieldCheck, MessageCircle, PartyPopper, Award } from 'lucide-react';
 import { BANKS, WHATSAPP_ADMIN, formatRupiah, waLink, donationWaMessage } from '@/lib/site-data';
+import { isKurbanDonation, downloadKurbanCertificate } from '@/lib/receipts';
 
 const QUICK = [10000, 50000, 100000, 250000, 500000, 1000000];
 
@@ -171,6 +172,9 @@ export function DonationDialog({ open, setOpen, campaign, presetAmount, presetTy
               <a href={waHref} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setOpen(false), 500)} className="block">
                 <Button className="w-full rounded-xl bg-[#25D366] hover:bg-[#1eb659] text-white h-12 text-base font-semibold"><MessageCircle className="w-5 h-5 mr-2" />Konfirmasi via WhatsApp</Button>
               </a>
+              {isKurbanDonation(result) && (
+                <Button variant="outline" onClick={() => downloadKurbanCertificate(result)} className="w-full rounded-xl border-brand-green text-brand-green hover:bg-brand-greenlight"><Award className="w-4 h-4 mr-2" />Unduh Sertifikat Kurban</Button>
+              )}
               <button className="w-full text-center text-sm text-muted-foreground hover:text-brand-ink" onClick={() => setOpen(false)}>Nanti saja, tutup</button>
             </div>
           )}
