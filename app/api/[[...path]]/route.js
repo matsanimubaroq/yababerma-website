@@ -437,17 +437,37 @@ async function sendAdminOtpEmail(otp) {
   } catch (e) { console.error('Email(otp) exception:', e?.message); return false }
 }
 
-// Fire-and-forget WhatsApp thank-you via Fonnte (inert unless FONNTE_TOKEN is set)
-async function sendWhatsAppThankYou(donation) {
-  const token = process.env.FONNTE_TOKEN
-  if (!token || !donation || !donation.donor_whatsapp) return false
-  let value = String(donation.donor_whatsapp).trim().replace(/[\s().+-]/g, '')
-  if (value.startsWith('62')) value = '0' + value.slice(2)
-  if (!/^08\d{7,14}$/.test(value)) { console.error('Fonnte: nomor WA tidak valid:', donation.donor_whatsapp); return false }
+// ---- WhatsApp (Fonnte) helpers ----
+const DEFAULT_WA_TEMPLATE = `Assalamu'alaikum {name} \uD83E\uDD0D\n\nAlhamdulillah, donasi Anda sebesar *{amount}* untuk *{program}* telah kami *VERIFIKASI* dan diterima oleh Yayasan Banua Berkah Mandiri.\n\nSemoga menjadi amal jariyah yang berkah dan berlipat ganda, serta menjadi pemberat timbangan kebaikan Anda. Aamiin \uD83E\uDD32\n\nTerima kasih atas kepercayaan & kebaikan Anda.\n\n\u2014 Yayasan Banua Berkah Mandiri\nyababerma.org`
+
+async function getWaSettings(db) {
+  const doc = await db.collection('settings').findOne({ id: 'wa_settings' })
+  return {
+    thank_you_template: (doc && doc.thank_you_template) || DEFAULT_WA_TEMPLATE,
+    admin_notify_enabled: doc ? !!doc.admin_notify_enabled : false,
+    admin_number: (doc && doc.admin_number) || '',
+  }
+}
+
+function renderWaTemplate(tpl, donation) {
   const name = donation.is_anonymous ? 'Sahabat Donatur' : (donation.donor_name || 'Sahabat Donatur')
   const amount = 'Rp ' + Number(donation.amount || 0).toLocaleString('id-ID')
   const program = donation.campaign_title || 'program kebaikan'
-  const message = `Assalamu'alaikum ${name} \uD83E\uDD0D\n\nAlhamdulillah, donasi Anda sebesar *${amount}* untuk *${program}* telah kami *VERIFIKASI* dan diterima oleh Yayasan Banua Berkah Mandiri.\n\nSemoga menjadi amal jariyah yang berkah dan berlipat ganda, serta menjadi pemberat timbangan kebaikan Anda. Aamiin \uD83E\uDD32\n\nTerima kasih atas kepercayaan & kebaikan Anda.\n\n\u2014 Yayasan Banua Berkah Mandiri\nyababerma.org`
+  const total = 'Rp ' + Number(donation.total_amount || donation.amount || 0).toLocaleString('id-ID')
+  return String(tpl || DEFAULT_WA_TEMPLATE)
+    .replace(/\{name\}/g, name)
+    .replace(/\{amount\}/g, amount)
+    .replace(/\{program\}/g, program)
+    .replace(/\{total\}/g, total)
+}
+
+// Low-level sender (inert unless FONNTE_TOKEN is set)
+async function fonnteSend(target, message) {
+  const token = process.env.FONNTE_TOKEN
+  if (!token || !target || !message) return false
+  let value = String(target).trim().replace(/[\s().+-]/g, '')
+  if (value.startsWith('62')) value = '0' + value.slice(2)
+  if (!/^08\d{7,14}$/.test(value)) { console.error('Fonnte: nomor tidak valid:', target); return false }
   try {
     const form = new FormData()
     form.append('target', value)
@@ -459,6 +479,12 @@ async function sendWhatsAppThankYou(donation) {
     console.info('Fonnte terkirim (queued):', JSON.stringify(result.id || result.requestid || ''))
     return true
   } catch (e) { console.error('Fonnte exception:', e?.message); return false }
+}
+
+// Thank-you to donor (uses admin-editable template)
+async function sendWhatsAppThankYou(donation, template) {
+  if (!donation || !donation.donor_whatsapp) return false
+  return fonnteSend(donation.donor_whatsapp, renderWaTemplate(template, donation))
 }
 
 // ---------------- Router ----------------
@@ -520,6 +546,7 @@ async function handleRoute(request, { params }) {
         donor_email: body.donor_email || (currentUser ? currentUser.email : null),
         donor_whatsapp: body.donor_whatsapp,
         message: body.message || '',
+        show_on_wall: body.show_on_wall === undefined ? false : !!body.show_on_wall,
         payment_method: body.payment_method || 'bsi',
         is_anonymous: !!body.is_anonymous,
         donation_type: body.donation_type || (campaign ? campaign.category : 'sedekah'),
@@ -539,6 +566,14 @@ async function handleRoute(request, { params }) {
       // Thank-you email is sent ONLY after admin verification (per config).
       // On creation we only notify the admin (background, non-blocking).
       sendAdminNotifyEmail(donation).catch(() => {})
+      // WhatsApp notification to admin on new donation (fire-and-forget, if enabled)
+      getWaSettings(db).then((wa) => {
+        if (wa.admin_notify_enabled && wa.admin_number) {
+          const who = donation.is_anonymous ? 'Hamba Allah' : donation.donor_name
+          const msg = `\uD83D\uDD14 *Donasi Baru Masuk*\n\nNama: ${who}\nProgram: ${donation.campaign_title}\nNominal: Rp ${Number(donation.amount || 0).toLocaleString('id-ID')}\nTotal transfer: Rp ${Number(donation.total_amount || 0).toLocaleString('id-ID')} (kode unik ${donation.unique_code})\nWA donatur: ${donation.donor_whatsapp}\n\nSegera verifikasi di panel admin:\nyababerma.org/admin`
+          fonnteSend(wa.admin_number, msg)
+        }
+      }).catch(() => {})
 
       return handleCORS(NextResponse.json(donation))
     }
@@ -588,6 +623,13 @@ async function handleRoute(request, { params }) {
         created_at: new Date().toISOString(),
       }
       await db.collection('confirmations').insertOne({ ...conf })
+      // WhatsApp notification to admin on new manual confirmation (fire-and-forget, if enabled)
+      getWaSettings(db).then((wa) => {
+        if (wa.admin_notify_enabled && wa.admin_number) {
+          const msg = `\uD83D\uDCE8 *Konfirmasi Transfer Baru*\n\nNama: ${conf.name}\nProgram: ${conf.program || '-'}\nNominal: Rp ${Number(conf.amount || 0).toLocaleString('id-ID')}\nBank: ${conf.bank || '-'}\nWA: ${conf.whatsapp}\nLampiran bukti: ${conf.proof_image ? 'Ada' : 'Tidak ada'}\n\nCek di panel admin:\nyababerma.org/admin`
+          fonnteSend(wa.admin_number, msg)
+        }
+      }).catch(() => {})
       const { proof_image, ...safe } = conf
       return handleCORS(NextResponse.json({ ok: true, confirmation: safe }))
     }
@@ -743,7 +785,8 @@ async function handleRoute(request, { params }) {
 
     // ---- Prayers (Dinding Doa) ----
     if (route === '/prayers' && method === 'GET') {
-      const real = await db.collection('donations').find({ message: { $nin: [null, ''] } }).sort({ created_at: -1 }).limit(20).toArray()
+      // Only include donation messages the donor explicitly opted to display on the wall
+      const real = await db.collection('donations').find({ message: { $nin: [null, ''] }, show_on_wall: true }).sort({ created_at: -1 }).limit(20).toArray()
       const realMapped = real.map(d => ({ name: d.is_anonymous ? 'Hamba Allah' : (d.donor_name || 'Hamba Allah'), message: d.message, program: d.campaign_title || '' }))
       const seeded = await db.collection('prayers').find({}).sort({ created_at: -1 }).limit(50).toArray()
       const seededMapped = seeded.map(p => ({ name: p.name, message: p.message, program: p.program }))
@@ -819,9 +862,9 @@ async function handleRoute(request, { params }) {
         const d = await db.collection('donations').findOne({ id: body.donation_id })
         if (d && status === 'verified') {
           sendVerifiedEmail(clean(d)).catch(() => {})
-          // Fire-and-forget WhatsApp thank-you (idempotent) via Fonnte
+          // Fire-and-forget WhatsApp thank-you (idempotent) via Fonnte, using admin-editable template
           if (!d.wa_thanked_at) {
-            sendWhatsAppThankYou(clean(d)).then((ok) => {
+            getWaSettings(db).then((wa) => sendWhatsAppThankYou(clean(d), wa.thank_you_template)).then((ok) => {
               if (ok) db.collection('donations').updateOne({ id: d.id }, { $set: { wa_thanked_at: new Date().toISOString() } }).catch(() => {})
             }).catch(() => {})
           }
@@ -836,6 +879,35 @@ async function handleRoute(request, { params }) {
         if (newPass.length < 6) return handleCORS(NextResponse.json({ error: 'Password baru minimal 6 karakter.' }, { status: 400 }))
         if (newPass === provided) return handleCORS(NextResponse.json({ error: 'Password baru harus berbeda dari yang sekarang.' }, { status: 400 }))
         await db.collection('settings').updateOne({ id: 'admin_auth' }, { $set: { id: 'admin_auth', password: newPass, updated_at: new Date().toISOString() } }, { upsert: true })
+        return handleCORS(NextResponse.json({ ok: true }))
+      }
+
+      // WhatsApp settings (editable template + admin notification toggle)
+      if (route === '/admin/wa-settings' && method === 'GET') {
+        const wa = await getWaSettings(db)
+        return handleCORS(NextResponse.json({ ...wa, token_configured: !!process.env.FONNTE_TOKEN, default_template: DEFAULT_WA_TEMPLATE }))
+      }
+      if (route === '/admin/wa-settings' && method === 'POST') {
+        const body = await request.json()
+        const update = {
+          id: 'wa_settings',
+          thank_you_template: (typeof body.thank_you_template === 'string' && body.thank_you_template.trim()) ? body.thank_you_template : DEFAULT_WA_TEMPLATE,
+          admin_notify_enabled: !!body.admin_notify_enabled,
+          admin_number: String(body.admin_number || '').trim(),
+          updated_at: new Date().toISOString(),
+        }
+        await db.collection('settings').updateOne({ id: 'wa_settings' }, { $set: update }, { upsert: true })
+        return handleCORS(NextResponse.json({ ok: true, ...update, token_configured: !!process.env.FONNTE_TOKEN }))
+      }
+      // Send a test WhatsApp message (awaited so admin gets immediate feedback)
+      if (route === '/admin/wa-test' && method === 'POST') {
+        const body = await request.json()
+        const number = String(body.number || '').trim()
+        if (!number) return handleCORS(NextResponse.json({ error: 'Nomor WhatsApp wajib diisi.' }, { status: 400 }))
+        if (!process.env.FONNTE_TOKEN) return handleCORS(NextResponse.json({ error: 'Token Fonnte belum dikonfigurasi di server.' }, { status: 400 }))
+        const msg = body.message || 'Tes koneksi WhatsApp dari panel admin Yayasan Banua Berkah Mandiri. Jika Anda menerima pesan ini, integrasi WhatsApp sudah aktif. \u2705'
+        const ok = await fonnteSend(number, msg)
+        if (!ok) return handleCORS(NextResponse.json({ error: 'Gagal mengirim WA. Periksa nomor tujuan & token Fonnte.' }, { status: 502 }))
         return handleCORS(NextResponse.json({ ok: true }))
       }
 

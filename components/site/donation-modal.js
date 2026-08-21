@@ -21,6 +21,7 @@ export function DonationDialog({ open, setOpen, campaign, presetAmount, presetTy
   const [custom, setCustom] = useState(presetAmount ? String(presetAmount) : '');
   const [form, setForm] = useState({ donor_name: '', donor_email: '', donor_whatsapp: '', message: '' });
   const [anon, setAnon] = useState(false);
+  const [showOnWall, setShowOnWall] = useState(true);
   const [bank, setBank] = useState('bsi');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -31,6 +32,7 @@ export function DonationDialog({ open, setOpen, campaign, presetAmount, presetTy
       setStep(1);
       setResult(null);
       setCardPreview(null);
+      setShowOnWall(true);
       if (presetAmount) { setAmount(presetAmount); setCustom(String(presetAmount)); }
     }
   }, [open, presetAmount]);
@@ -63,6 +65,7 @@ export function DonationDialog({ open, setOpen, campaign, presetAmount, presetTy
           donor_email: form.donor_email,
           donor_whatsapp: form.donor_whatsapp,
           message: form.message,
+          show_on_wall: showOnWall && !!form.message.trim(),
           payment_method: bank,
           is_anonymous: anon,
           donation_type: presetType || campaign?.category,
@@ -130,6 +133,10 @@ export function DonationDialog({ open, setOpen, campaign, presetAmount, presetTy
               <div><Label className="text-sm">Email</Label><Input type="email" value={form.donor_email} onChange={(e) => setForm({ ...form, donor_email: e.target.value })} placeholder="email@contoh.com" className="rounded-xl mt-1" /></div>
               <div><Label className="text-sm">Nomor WhatsApp *</Label><Input value={form.donor_whatsapp} onChange={(e) => setForm({ ...form, donor_whatsapp: e.target.value })} placeholder="08xxxxxxxxxx" className="rounded-xl mt-1" /></div>
               <div><Label className="text-sm">Doa / Pesan</Label><Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="Tuliskan doa atau harapan Anda..." rows={3} className="rounded-xl mt-1" /></div>
+              <label className={`flex items-start gap-2.5 text-sm rounded-xl border p-3 transition ${form.message.trim() ? 'cursor-pointer border-brand-green/40 bg-brand-greenlight/40' : 'opacity-60 border-border bg-muted/40'}`}>
+                <Checkbox checked={showOnWall} disabled={!form.message.trim()} onCheckedChange={(v) => setShowOnWall(!!v)} className="mt-0.5" />
+                <span className="text-brand-ink/90 leading-relaxed">Tampilkan doa saya di <span className="font-semibold text-brand-green">Dinding Doa</span> pada halaman utama, agar sahabat lain turut mengaminkan.{!form.message.trim() && <span className="block text-xs text-muted-foreground mt-0.5">Isi kolom doa di atas untuk mengaktifkan opsi ini.</span>}</span>
+              </label>
               <label className="flex items-center gap-2 text-sm cursor-pointer text-muted-foreground">
                 <Checkbox checked={anon} onCheckedChange={(v) => setAnon(!!v)} /> Sembunyikan nama saya (tampil sebagai Hamba Allah)
               </label>

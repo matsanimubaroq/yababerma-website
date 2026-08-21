@@ -12,9 +12,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { formatRupiah } from '@/lib/site-data';
-import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint, Search, Trash2, LayoutGrid, List as ListIcon, BarChart3, ImageDown, SlidersHorizontal, Eye, EyeOff, Mail, ArrowLeft, KeyRound } from 'lucide-react';
+import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint, Search, Trash2, LayoutGrid, List as ListIcon, BarChart3, ImageDown, SlidersHorizontal, Eye, EyeOff, Mail, ArrowLeft, KeyRound, MessageSquare, Bell, Send } from 'lucide-react';
 
 const CHART_COLORS = ['#00A651', '#0082C8', '#F59E0B', '#8B5CF6', '#EF4444', '#14B8A6', '#EC4899', '#64748B'];
 
@@ -44,6 +46,11 @@ export default function AdminPage() {
   const [changeConfirm, setChangeConfirm] = useState('');
   const [showChange, setShowChange] = useState(false);
   const [changeBusy, setChangeBusy] = useState(false);
+  // WhatsApp settings
+  const [wa, setWa] = useState({ thank_you_template: '', admin_notify_enabled: false, admin_number: '', token_configured: false });
+  const [waSaving, setWaSaving] = useState(false);
+  const [waTestNumber, setWaTestNumber] = useState('');
+  const [waTestBusy, setWaTestBusy] = useState(false);
   // Toolbar / filters / views / selection
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('newest');
@@ -60,16 +67,18 @@ export default function AdminPage() {
   const loadAll = useCallback(async (k) => {
     const h = { 'x-admin-key': k };
     try {
-      const [s, d, cf, ku] = await Promise.all([
+      const [s, d, cf, ku, ws] = await Promise.all([
         fetch('/api/admin/summary', { headers: h }).then((r) => r.json()),
         fetch('/api/admin/donations', { headers: h }).then((r) => r.json()),
         fetch('/api/admin/confirmations', { headers: h }).then((r) => r.json()),
         fetch('/api/admin/kurban', { headers: h }).then((r) => r.json()),
+        fetch('/api/admin/wa-settings', { headers: h }).then((r) => r.json()),
       ]);
       setSummary(s && !s.error ? s : null);
       setDonations(Array.isArray(d) ? d : []);
       setConfs(Array.isArray(cf) ? cf : []);
       setKurban(ku && Array.isArray(ku.options) ? ku.options : []);
+      if (ws && !ws.error) setWa({ thank_you_template: ws.thank_you_template || '', admin_notify_enabled: !!ws.admin_notify_enabled, admin_number: ws.admin_number || '', token_configured: !!ws.token_configured });
     } catch (e) { toast.error('Gagal memuat data'); }
   }, []);
 
@@ -132,6 +141,27 @@ export default function AdminPage() {
         toast.success('Password admin berhasil diubah');
       } else toast.error(data.error || 'Gagal mengubah password');
     } catch { toast.error('Terjadi kesalahan'); } finally { setChangeBusy(false); }
+  };
+
+  const saveWaSettings = async () => {
+    setWaSaving(true);
+    try {
+      const r = await fetch('/api/admin/wa-settings', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': key }, body: JSON.stringify({ thank_you_template: wa.thank_you_template, admin_notify_enabled: wa.admin_notify_enabled, admin_number: wa.admin_number }) });
+      const data = await r.json();
+      if (r.ok) { setWa((w) => ({ ...w, thank_you_template: data.thank_you_template, admin_notify_enabled: data.admin_notify_enabled, admin_number: data.admin_number })); toast.success('Pengaturan WhatsApp tersimpan'); }
+      else toast.error(data.error || 'Gagal menyimpan');
+    } catch { toast.error('Terjadi kesalahan'); } finally { setWaSaving(false); }
+  };
+
+  const testWa = async () => {
+    if (!waTestNumber.trim()) { toast.error('Isi nomor WhatsApp tujuan tes'); return; }
+    setWaTestBusy(true);
+    try {
+      const r = await fetch('/api/admin/wa-test', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': key }, body: JSON.stringify({ number: waTestNumber }) });
+      const data = await r.json();
+      if (r.ok) toast.success('Pesan tes terkirim! Cek WhatsApp tujuan.');
+      else toast.error(data.error || 'Gagal mengirim tes');
+    } catch { toast.error('Terjadi kesalahan'); } finally { setWaTestBusy(false); }
   };
 
   const setKurbanField = (idx, field, value) => setKurban((arr) => arr.map((o, i) => (i === idx ? { ...o, [field]: value } : o)));
@@ -382,6 +412,7 @@ export default function AdminPage() {
             <TabsTrigger value="donasi" className="rounded-lg data-[state=active]:bg-brand-green data-[state=active]:text-white">Donasi ({donations.length})</TabsTrigger>
             <TabsTrigger value="konfirmasi" className="rounded-lg data-[state=active]:bg-brand-green data-[state=active]:text-white">Konfirmasi Transfer ({confs.length})</TabsTrigger>
             <TabsTrigger value="kurban" className="rounded-lg data-[state=active]:bg-brand-green data-[state=active]:text-white">Kuota Kurban</TabsTrigger>
+            <TabsTrigger value="wa" className="rounded-lg data-[state=active]:bg-brand-green data-[state=active]:text-white">Pengaturan WA</TabsTrigger>
           </TabsList>
 
           <TabsContent value="donasi" className="mt-4 space-y-4">
@@ -681,6 +712,63 @@ export default function AdminPage() {
                   </div>
                 </div>
               )}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="wa" className="mt-4">
+            <Card className="rounded-2xl border-border bg-white p-6 space-y-6">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-xl bg-[#25D366]/15 text-[#128C4B] flex items-center justify-center shrink-0"><MessageSquare className="w-6 h-6" /></div>
+                <div className="flex-1">
+                  <h3 className="font-heading font-bold text-lg text-brand-ink">Pengaturan WhatsApp Otomatis</h3>
+                  <p className="text-sm text-muted-foreground">Kelola pesan ucapan terima kasih &amp; notifikasi WhatsApp. {wa.token_configured ? <span className="text-brand-green font-medium">Terhubung ke Fonnte \u2713</span> : <span className="text-red-500 font-medium">Token Fonnte belum dikonfigurasi</span>}</p>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-semibold">Template Pesan Ucapan Terima Kasih (dikirim saat donasi diverifikasi)</Label>
+                <Textarea value={wa.thank_you_template} onChange={(e) => setWa((w) => ({ ...w, thank_you_template: e.target.value }))} rows={9} className="rounded-xl mt-2 text-sm" placeholder="Tulis pesan ucapan terima kasih..." />
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">Klik untuk sisipkan:</span>
+                  {['{name}', '{amount}', '{program}', '{total}'].map((p) => (
+                    <button key={p} type="button" onClick={() => setWa((w) => ({ ...w, thank_you_template: (w.thank_you_template || '') + p }))} className="px-2 py-0.5 rounded bg-brand-greenlight text-brand-green font-mono hover:bg-brand-green hover:text-white transition">{p}</button>
+                  ))}
+                  <span className="text-muted-foreground">— apit teks dengan *bintang* untuk cetak tebal di WhatsApp</span>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <Bell className="w-5 h-5 text-brand-green mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-brand-ink text-sm">Notifikasi WhatsApp ke Admin</p>
+                      <p className="text-xs text-muted-foreground">Kirim WA ke admin setiap ada donasi/konfirmasi baru agar verifikasi lebih cepat.</p>
+                    </div>
+                  </div>
+                  <Switch checked={wa.admin_notify_enabled} onCheckedChange={(v) => setWa((w) => ({ ...w, admin_notify_enabled: v }))} />
+                </div>
+                {wa.admin_notify_enabled && (
+                  <div className="mt-3">
+                    <Label className="text-sm">Nomor WA Admin (penerima notifikasi)</Label>
+                    <Input value={wa.admin_number} onChange={(e) => setWa((w) => ({ ...w, admin_number: e.target.value }))} className="rounded-xl mt-1 max-w-xs" placeholder="08xxxxxxxxxx" />
+                    <p className="text-[11px] text-muted-foreground mt-1">Sebaiknya berbeda dari nomor perangkat Fonnte pengirim (WhatsApp tidak bisa mengirim ke nomor sendiri).</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end">
+                <Button onClick={saveWaSettings} disabled={waSaving} className="rounded-xl">{waSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}Simpan Pengaturan</Button>
+              </div>
+
+              <div className="rounded-xl bg-brand-slatebg p-4">
+                <Label className="text-sm font-semibold">Kirim Pesan Tes</Label>
+                <p className="text-xs text-muted-foreground mb-2">Pastikan integrasi berjalan dengan mengirim WA percobaan.</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input value={waTestNumber} onChange={(e) => setWaTestNumber(e.target.value)} className="rounded-xl bg-white" placeholder="Nomor tujuan tes, mis. 0851xxxxxxx" />
+                  <Button variant="outline" onClick={testWa} disabled={waTestBusy || !wa.token_configured} className="rounded-xl shrink-0"><Send className="w-4 h-4 mr-2" />{waTestBusy ? 'Mengirim...' : 'Kirim Tes'}</Button>
+                </div>
+              </div>
             </Card>
           </TabsContent>
         </Tabs>
