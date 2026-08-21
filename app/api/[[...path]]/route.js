@@ -150,6 +150,51 @@ async function sendAdminNotifyEmail(donation) {
 // ---------------- Seed data ----------------
 function daysFromNow(n) { return new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString() }
 
+// Kurban options + real-time quota targets (sold_base = baseline already registered)
+const KURBAN_OPTIONS = [
+  { key: 'kambing', name: 'Kambing / Domba', emoji: '\uD83D\uDC10', desc: '1 ekor untuk 1 pekurban', price: 2750000, unit: 'ekor', quota: 50, sold_base: 18 },
+  { key: 'sapi-patungan', name: 'Sapi Patungan', emoji: '\uD83D\uDC04', desc: '1 dari 7 bagian (1/7 sapi)', price: 2500000, unit: 'bagian', quota: 70, sold_base: 34 },
+  { key: 'sapi-utuh', name: 'Sapi Utuh', emoji: '\uD83D\uDC04', desc: '1 ekor sapi (7 bagian sekaligus)', price: 17500000, unit: 'ekor', quota: 10, sold_base: 3 },
+]
+
+// Pre-aggregated historical annual reports (for the year filter on /laporan)
+function seedAnnualReports() {
+  return [
+    {
+      id: uuidv4(), year: 2024, total_collected: 890000000, total_donors: 2760, total_donations: 4180,
+      by_category: [
+        { category: 'zakat', amount: 280000000 }, { category: 'sedekah', amount: 250000000 },
+        { category: 'wakaf', amount: 140000000 }, { category: 'kurban', amount: 120000000 },
+        { category: 'bencana', amount: 60000000 }, { category: 'fidyah', amount: 40000000 },
+      ],
+      by_program: [
+        { title: 'Panti Asuhan Banua Berkah', slug: 'operasional-panti-asuhan-banua-berkah', collected: 230000000, target: 250000000 },
+        { title: 'TPQ & Beasiswa Santri', slug: 'beasiswa-santri-tpq-banua-berkah', collected: 150000000, target: 180000000 },
+        { title: "Wakaf Al-Qur'an Pelosok", slug: 'wakaf-al-quran-santri-pelosok', collected: 170000000, target: 200000000 },
+        { title: 'Zakat Maal Produktif', slug: 'zakat-maal-penyaluran-produktif', collected: 200000000, target: 220000000 },
+        { title: 'Tanggap Bencana', slug: 'tanggap-bencana-kalimantan', collected: 90000000, target: 150000000 },
+        { title: 'Kurban Peduli Banua', slug: 'kurban-peduli-banua', collected: 120000000, target: 150000000 },
+      ],
+    },
+    {
+      id: uuidv4(), year: 2025, total_collected: 1340000000, total_donors: 4120, total_donations: 6540,
+      by_category: [
+        { category: 'zakat', amount: 420000000 }, { category: 'sedekah', amount: 380000000 },
+        { category: 'wakaf', amount: 210000000 }, { category: 'kurban', amount: 180000000 },
+        { category: 'bencana', amount: 100000000 }, { category: 'fidyah', amount: 50000000 },
+      ],
+      by_program: [
+        { title: 'Panti Asuhan Banua Berkah', slug: 'operasional-panti-asuhan-banua-berkah', collected: 310000000, target: 350000000 },
+        { title: 'TPQ & Beasiswa Santri', slug: 'beasiswa-santri-tpq-banua-berkah', collected: 220000000, target: 250000000 },
+        { title: "Wakaf Al-Qur'an Pelosok", slug: 'wakaf-al-quran-santri-pelosok', collected: 260000000, target: 300000000 },
+        { title: 'Zakat Maal Produktif', slug: 'zakat-maal-penyaluran-produktif', collected: 300000000, target: 320000000 },
+        { title: 'Tanggap Bencana', slug: 'tanggap-bencana-kalimantan', collected: 150000000, target: 200000000 },
+        { title: 'Kurban Peduli Banua', slug: 'kurban-peduli-banua', collected: 100000000, target: 120000000 },
+      ],
+    },
+  ]
+}
+
 function seedCampaigns() {
   return [
     {
@@ -263,11 +308,7 @@ function seedCampaigns() {
       ],
       gallery: ['https://images.pexels.com/photos/6646926/pexels-photo-6646926.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940', 'https://images.pexels.com/photos/7345447/pexels-photo-7345447.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940'],
       updates: [ { date: daysFromNow(-7), title: 'Pendaftaran Dibuka', text: 'Pendaftaran pekurban tahun ini resmi dibuka.' } ],
-      kurban_options: [
-        { key: 'kambing', name: 'Kambing / Domba', emoji: '\uD83D\uDC10', desc: '1 ekor untuk 1 pekurban', price: 2750000, unit: 'ekor' },
-        { key: 'sapi-patungan', name: 'Sapi Patungan', emoji: '\uD83D\uDC04', desc: '1 dari 7 bagian (1/7 sapi)', price: 2500000, unit: 'bagian' },
-        { key: 'sapi-utuh', name: 'Sapi Utuh', emoji: '\uD83D\uDC04', desc: '1 ekor sapi (7 bagian sekaligus)', price: 17500000, unit: 'ekor' },
-      ],
+      kurban_options: KURBAN_OPTIONS,
     },
   ]
 }
@@ -325,6 +366,12 @@ async function ensureSeed(db) {
   if (await db.collection('testimonials').countDocuments() === 0) await db.collection('testimonials').insertMany(seedTestimonials())
   if (await db.collection('gallery').countDocuments() === 0) await db.collection('gallery').insertMany(seedGallery())
   if (await db.collection('prayers').countDocuments() === 0) await db.collection('prayers').insertMany(seedPrayers())
+  if (await db.collection('annual_reports').countDocuments() === 0) await db.collection('annual_reports').insertMany(seedAnnualReports())
+  // Idempotent migration: ensure kurban campaign options carry quota targets
+  const kurban = await db.collection('campaigns').findOne({ slug: 'kurban-peduli-banua' })
+  if (kurban && (!Array.isArray(kurban.kurban_options) || !kurban.kurban_options[0] || kurban.kurban_options[0].quota == null)) {
+    await db.collection('campaigns').updateOne({ slug: 'kurban-peduli-banua' }, { $set: { kurban_options: KURBAN_OPTIONS } })
+  }
 }
 
 // ---------------- Auth helpers ----------------
@@ -408,6 +455,8 @@ async function handleRoute(request, { params }) {
         payment_method: body.payment_method || 'bsi',
         is_anonymous: !!body.is_anonymous,
         donation_type: body.donation_type || (campaign ? campaign.category : 'sedekah'),
+        kurban_option: body.kurban_option || null,
+        kurban_qty: body.kurban_qty ? Number(body.kurban_qty) : null,
         status: 'pending',
         user_id: currentUser ? currentUser.id : null,
         created_at: new Date().toISOString(),
@@ -507,6 +556,68 @@ async function handleRoute(request, { params }) {
         humanitarian: 3000, wakaf_quran: 2100, panti: 500, pemberdayaan: 200,
         total_collected, total_donors, total_target, total_donations, active_campaigns: campaigns.length,
       }))
+    }
+
+    // ---- Kurban real-time quota ----
+    if (route === '/kurban/quota' && method === 'GET') {
+      const camp = await db.collection('campaigns').findOne({ slug: 'kurban-peduli-banua' })
+      const opts = (camp && Array.isArray(camp.kurban_options) && camp.kurban_options[0] && camp.kurban_options[0].quota != null)
+        ? camp.kurban_options : KURBAN_OPTIONS
+      const dons = await db.collection('donations').find({ campaign_slug: 'kurban-peduli-banua', kurban_option: { $nin: [null, ''] } }).toArray()
+      const soldMap = {}
+      dons.forEach(d => { const q = Number(d.kurban_qty) || 1; soldMap[d.kurban_option] = (soldMap[d.kurban_option] || 0) + q })
+      const options = opts.map(o => {
+        const sold = (o.sold_base || 0) + (soldMap[o.key] || 0)
+        const quota = o.quota || 0
+        const remaining = Math.max(quota - sold, 0)
+        return { key: o.key, name: o.name, emoji: o.emoji, desc: o.desc, price: o.price, unit: o.unit, quota, sold, remaining }
+      })
+      return handleCORS(NextResponse.json({ options }))
+    }
+
+    // ---- Annual reports (public transparency, filterable by year) ----
+    if (route === '/reports' && method === 'GET') {
+      const url = new URL(request.url)
+      const yearParam = url.searchParams.get('year') || 'all'
+      const currentYear = new Date().getFullYear()
+
+      // Live current-year figures derived from live campaigns + donations
+      const campaigns = await db.collection('campaigns').find({}).toArray()
+      const catMap = {}
+      campaigns.forEach(c => { catMap[c.category] = (catMap[c.category] || 0) + (c.collected_amount || 0) })
+      const liveDoc = {
+        year: currentYear,
+        total_collected: campaigns.reduce((s, c) => s + (c.collected_amount || 0), 0),
+        total_donors: campaigns.reduce((s, c) => s + (c.donor_count || 0), 0),
+        total_donations: await db.collection('donations').countDocuments(),
+        by_category: Object.entries(catMap).map(([category, amount]) => ({ category, amount })),
+        by_program: campaigns.map(c => ({ title: c.title, slug: c.slug, collected: c.collected_amount || 0, target: c.target_amount || 0 })),
+      }
+
+      const history = cleanArr(await db.collection('annual_reports').find({}).sort({ year: -1 }).toArray())
+      const allDocs = [liveDoc, ...history.filter(h => h.year !== currentYear)]
+      const years = ['all', ...allDocs.map(d => String(d.year)).sort((a, b) => Number(b) - Number(a))]
+
+      const buildResp = (doc) => ({ ...doc, years })
+
+      if (yearParam !== 'all') {
+        const doc = allDocs.find(d => String(d.year) === String(yearParam))
+        if (!doc) return handleCORS(NextResponse.json({ error: 'Year not found', years }, { status: 404 }))
+        return handleCORS(NextResponse.json(buildResp(doc)))
+      }
+
+      // Aggregate ALL years
+      const aggCat = {}
+      allDocs.forEach(d => (d.by_category || []).forEach(c => { aggCat[c.category] = (aggCat[c.category] || 0) + (c.amount || 0) }))
+      const aggregate = {
+        year: 'all',
+        total_collected: allDocs.reduce((s, d) => s + (d.total_collected || 0), 0),
+        total_donors: allDocs.reduce((s, d) => s + (d.total_donors || 0), 0),
+        total_donations: allDocs.reduce((s, d) => s + (d.total_donations || 0), 0),
+        by_category: Object.entries(aggCat).map(([category, amount]) => ({ category, amount })),
+        by_program: liveDoc.by_program,
+      }
+      return handleCORS(NextResponse.json(buildResp(aggregate)))
     }
 
     // ---- Auth ----

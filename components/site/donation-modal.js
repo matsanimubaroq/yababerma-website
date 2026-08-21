@@ -8,13 +8,14 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Check, Copy, Loader2, ArrowLeft, Heart, ShieldCheck, MessageCircle, PartyPopper, Award, BookOpen, FileText } from 'lucide-react';
+import { Check, Copy, Loader2, ArrowLeft, Heart, ShieldCheck, MessageCircle, PartyPopper, Award, BookOpen, FileText, Gift, Share2 } from 'lucide-react';
 import { BANKS, WHATSAPP_ADMIN, formatRupiah, waLink, donationWaMessage } from '@/lib/site-data';
 import { isKurbanDonation, downloadKurbanCertificate, isWakafDonation, downloadWakafCertificate, isZakatDonation, downloadZakatReceipt } from '@/lib/receipts';
+import { downloadGreetingCard, shareGreetingWhatsApp } from '@/lib/greeting-card';
 
 const QUICK = [10000, 50000, 100000, 250000, 500000, 1000000];
 
-export function DonationDialog({ open, setOpen, campaign, presetAmount, presetType }) {
+export function DonationDialog({ open, setOpen, campaign, presetAmount, presetType, kurbanOption, kurbanQty }) {
   const [step, setStep] = useState(1);
   const [amount, setAmount] = useState(presetAmount || 0);
   const [custom, setCustom] = useState(presetAmount ? String(presetAmount) : '');
@@ -56,6 +57,8 @@ export function DonationDialog({ open, setOpen, campaign, presetAmount, presetTy
           payment_method: bank,
           is_anonymous: anon,
           donation_type: presetType || campaign?.category,
+          kurban_option: kurbanOption || null,
+          kurban_qty: kurbanQty || null,
         }),
       });
       const data = await res.json();
@@ -181,6 +184,19 @@ export function DonationDialog({ open, setOpen, campaign, presetAmount, presetTy
               {!isKurbanDonation(result) && !isWakafDonation(result) && isZakatDonation(result) && (
                 <Button variant="outline" onClick={() => downloadZakatReceipt(result)} className="w-full rounded-xl border-brand-green text-brand-green hover:bg-brand-greenlight"><FileText className="w-4 h-4 mr-2" />Unduh Bukti Setor Zakat (BSZ)</Button>
               )}
+
+              <div className="pt-1">
+                <div className="flex items-center gap-3 my-1">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Bagikan Kebaikan</span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <Button variant="outline" onClick={() => downloadGreetingCard(result)} className="rounded-xl border-brand-green text-brand-green hover:bg-brand-greenlight"><Gift className="w-4 h-4 mr-2" />Kartu Ucapan</Button>
+                  <Button variant="outline" onClick={() => shareGreetingWhatsApp(result)} className="rounded-xl border-[#25D366] text-[#128C4B] hover:bg-[#25D366]/10"><Share2 className="w-4 h-4 mr-2" />Bagikan</Button>
+                </div>
+              </div>
+
               <button className="w-full text-center text-sm text-muted-foreground hover:text-brand-ink" onClick={() => setOpen(false)}>Nanti saja, tutup</button>
             </div>
           )}
@@ -190,12 +206,12 @@ export function DonationDialog({ open, setOpen, campaign, presetAmount, presetTy
   );
 }
 
-export function DonateButton({ campaign, presetAmount, presetType, className, children, size, variant, disabled }) {
+export function DonateButton({ campaign, presetAmount, presetType, kurbanOption, kurbanQty, className, children, size, variant, disabled }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <Button onClick={() => setOpen(true)} className={className} size={size} variant={variant} disabled={disabled}>{children || 'Donasi Sekarang'}</Button>
-      <DonationDialog open={open} setOpen={setOpen} campaign={campaign} presetAmount={presetAmount} presetType={presetType} />
+      <DonationDialog open={open} setOpen={setOpen} campaign={campaign} presetAmount={presetAmount} presetType={presetType} kurbanOption={kurbanOption} kurbanQty={kurbanQty} />
     </>
   );
 }

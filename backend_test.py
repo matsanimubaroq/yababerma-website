@@ -1,540 +1,510 @@
 #!/usr/bin/env python3
 """
-Backend test for YABABERMA donation platform - Admin Notification Email Regression
-Tests the new sendAdminNotifyEmail(donation) on POST /api/donations
+Backend API Test Suite for YABABERMA
+Tests Kurban quota, Annual reports, and Donation regression
 """
-
 import requests
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import sys
 
-# Configuration
-BASE_URL = "https://yababerma-donasi.preview.emergentagent.com"
+BASE_URL = "https://yababerma-donasi.preview.emergentagent.com/api"
 ADMIN_KEY = "yababerma-admin-2026"
-ADMIN_HEADERS = {"x-admin-key": ADMIN_KEY, "Content-Type": "application/json"}
 
-def test_get_campaign_before(campaign_slug):
-    """Get campaign state before donation"""
-    print("\n" + "="*80)
-    print(f"PRE-TEST: Get campaign state before donation")
-    print("="*80)
-    
+def log_test(name, passed, details=""):
+    status = "✅ PASS" if passed else "❌ FAIL"
+    print(f"{status} - {name}")
+    if details:
+        print(f"  {details}")
+    return passed
+
+def test_kurban_quota_structure():
+    """Test A1: GET /api/kurban/quota returns correct structure"""
+    print("\n=== TEST A1: Kurban Quota Structure ===")
     try:
-        url = f"{BASE_URL}/api/campaigns/{campaign_slug}"
-        print(f"GET {url}")
+        resp = requests.get(f"{BASE_URL}/kurban/quota", timeout=10)
+        if resp.status_code != 200:
+            return log_test("Kurban quota endpoint", False, f"Expected 200, got {resp.status_code}")
         
-        response = requests.get(url, timeout=10)
-        print(f"Status: {response.status_code}")
+        data = resp.json()
+        if "options" not in data:
+            return log_test("Kurban quota structure", False, "Missing 'options' key")
         
-        if response.status_code == 200:
-            data = response.json()
-            collected = data.get("collected_amount", 0)
-            donor_count = data.get("donor_count", 0)
-            print(f"✅ Campaign state: collected_amount={collected}, donor_count={donor_count}")
-            return collected, donor_count
-        else:
-            print(f"❌ FAIL - Expected 200, got {response.status_code}")
-            return None, None
+        options = data["options"]
+        if len(options) != 3:
+            return log_test("Kurban quota options count", False, f"Expected 3 options, got {len(options)}")
+        
+        # Check for required keys
+        required_keys = ["kambing", "sapi-patungan", "sapi-utuh"]
+        option_keys = [opt["key"] for opt in options]
+        if set(option_keys) != set(required_keys):
+            return log_test("Kurban quota option keys", False, f"Expected {required_keys}, got {option_keys}")
+        
+        # Verify each option has required numeric fields
+        all_valid = True
+        for opt in options:
+            required_fields = ["quota", "sold", "remaining", "price", "name", "unit"]
+            for field in required_fields:
+                if field not in opt:
+                    log_test(f"Option {opt['key']} field {field}", False, f"Missing field")
+                    all_valid = False
+                    continue
+                
+                # Check numeric fields
+                if field in ["quota", "sold", "remaining", "price"]:
+                    if not isinstance(opt[field], (int, float)):
+                        log_test(f"Option {opt['key']} field {field}", False, f"Expected numeric, got {type(opt[field])}")
+                        all_valid = False
+                
+                # Check string fields
+                if field in ["name", "unit"]:
+                    if not isinstance(opt[field], str):
+                        log_test(f"Option {opt['key']} field {field}", False, f"Expected string, got {type(opt[field])}")
+                        all_valid = False
             
+            # Verify remaining calculation
+            expected_remaining = max(opt["quota"] - opt["sold"], 0)
+            if opt["remaining"] != expected_remaining:
+                log_test(f"Option {opt['key']} remaining calculation", False, 
+                        f"Expected {expected_remaining}, got {opt['remaining']}")
+                all_valid = False
+            
+            # Verify remaining <= quota
+            if opt["remaining"] > opt["quota"]:
+                log_test(f"Option {opt['key']} remaining <= quota", False, 
+                        f"remaining ({opt['remaining']}) > quota ({opt['quota']})")
+                all_valid = False
+        
+        if all_valid:
+            log_test("Kurban quota structure validation", True, 
+                    f"All 3 options valid with correct fields and calculations")
+        
+        return all_valid
     except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return None, None
+        return log_test("Kurban quota structure test", False, f"Exception: {str(e)}")
 
-
-def test_donation_with_email():
-    """Test 1: POST /api/donations WITH donor_email - must be fast (<2s) and work correctly"""
-    print("\n" + "="*80)
-    print("TEST 1: POST /api/donations WITH donor_email (< 2s, unique_code, campaign increment)")
-    print("="*80)
-    
-    campaign_slug = "wakaf-al-quran-santri-pelosok"
-    amount = 75000
-    
-    # Get campaign state before
-    collected_before, donor_count_before = test_get_campaign_before(campaign_slug)
-    if collected_before is None:
-        print("⚠️  WARNING - Could not get campaign state before donation")
-        return False
-    
+def test_kurban_quota_donation_increment():
+    """Test A2: POST donation with kurban_option increments quota correctly"""
+    print("\n=== TEST A2: Kurban Quota Donation Increment ===")
     try:
-        url = f"{BASE_URL}/api/donations"
-        payload = {
-            "campaign_slug": campaign_slug,
-            "amount": amount,
-            "donor_name": "Budi Santoso",
-            "donor_whatsapp": "081234567890",
-            "donor_email": "budi.santoso@test.com",
-            "message": "Semoga berkah",
+        # Get initial quota
+        resp = requests.get(f"{BASE_URL}/kurban/quota", timeout=10)
+        if resp.status_code != 200:
+            return log_test("Get initial quota", False, f"Status {resp.status_code}")
+        
+        initial_data = resp.json()
+        kambing_before = next((opt for opt in initial_data["options"] if opt["key"] == "kambing"), None)
+        if not kambing_before:
+            return log_test("Find kambing option", False, "kambing option not found")
+        
+        sold_before = kambing_before["sold"]
+        remaining_before = kambing_before["remaining"]
+        log_test("Capture kambing.sold BEFORE", True, f"sold={sold_before}, remaining={remaining_before}")
+        
+        # Create donation with kurban_option
+        donation_data = {
+            "campaign_slug": "kurban-peduli-banua",
+            "amount": 5500000,
+            "donor_name": "Ahmad Kurban",
+            "donor_whatsapp": "08123456789",
+            "kurban_option": "kambing",
+            "kurban_qty": 2,
             "payment_method": "bsi"
         }
         
-        print(f"POST {url}")
-        print(f"Payload: {payload}")
+        resp = requests.post(f"{BASE_URL}/donations", json=donation_data, timeout=10)
+        if resp.status_code != 200:
+            return log_test("POST kurban donation", False, f"Expected 200, got {resp.status_code}: {resp.text}")
         
-        start_time = time.time()
-        response = requests.post(url, json=payload, timeout=10)
-        elapsed = time.time() - start_time
+        donation = resp.json()
+        log_test("POST kurban donation", True, 
+                f"Created donation ID: {donation.get('id', 'N/A')}, unique_code: {donation.get('unique_code', 'N/A')}")
         
-        print(f"Status: {response.status_code}")
-        print(f"Response time: {elapsed:.3f}s")
+        # Wait a moment for DB to update
+        time.sleep(0.5)
         
-        if response.status_code != 200:
-            print(f"❌ FAIL - Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
+        # Get updated quota
+        resp = requests.get(f"{BASE_URL}/kurban/quota", timeout=10)
+        if resp.status_code != 200:
+            return log_test("Get updated quota", False, f"Status {resp.status_code}")
         
-        # Check response time
-        if elapsed >= 2.0:
-            print(f"❌ FAIL - Response time {elapsed:.3f}s >= 2s (email blocking the response)")
-            return False
-        else:
-            print(f"✅ PASS - Response time {elapsed:.3f}s < 2s (fire-and-forget working)")
+        updated_data = resp.json()
+        kambing_after = next((opt for opt in updated_data["options"] if opt["key"] == "kambing"), None)
+        if not kambing_after:
+            return log_test("Find kambing option after", False, "kambing option not found")
         
-        data = response.json()
+        sold_after = kambing_after["sold"]
+        remaining_after = kambing_after["remaining"]
         
-        # Check unique_code (100-999)
-        unique_code = data.get("unique_code")
-        if unique_code and 100 <= unique_code <= 999:
-            print(f"✅ PASS - unique_code={unique_code} (100-999)")
-        else:
-            print(f"❌ FAIL - unique_code={unique_code} (not in 100-999 range)")
-            return False
+        # Verify sold increased by exactly 2
+        sold_diff = sold_after - sold_before
+        if sold_diff != 2:
+            return log_test("Kambing sold increment", False, 
+                          f"Expected +2, got +{sold_diff} (before: {sold_before}, after: {sold_after})")
         
-        # Check total_amount = amount + unique_code
-        total_amount = data.get("total_amount")
-        expected_total = amount + unique_code
-        if total_amount == expected_total:
-            print(f"✅ PASS - total_amount={total_amount} (amount + unique_code)")
-        else:
-            print(f"❌ FAIL - total_amount={total_amount}, expected {expected_total}")
-            return False
+        # Verify remaining decreased by exactly 2
+        remaining_diff = remaining_before - remaining_after
+        if remaining_diff != 2:
+            return log_test("Kambing remaining decrement", False, 
+                          f"Expected -2, got -{remaining_diff} (before: {remaining_before}, after: {remaining_after})")
         
-        # Check status = 'pending'
-        status = data.get("status")
-        if status == "pending":
-            print(f"✅ PASS - status='pending'")
-        else:
-            print(f"❌ FAIL - status='{status}', expected 'pending'")
-            return False
-        
-        # Check campaign increment
-        print(f"\nVerifying campaign progress increment...")
-        time.sleep(0.5)  # Small delay to ensure DB update
-        
-        url_after = f"{BASE_URL}/api/campaigns/{campaign_slug}"
-        response_after = requests.get(url_after, timeout=10)
-        
-        if response_after.status_code == 200:
-            data_after = response_after.json()
-            collected_after = data_after.get("collected_amount", 0)
-            donor_count_after = data_after.get("donor_count", 0)
-            
-            collected_diff = collected_after - collected_before
-            donor_count_diff = donor_count_after - donor_count_before
-            
-            print(f"Before: collected_amount={collected_before}, donor_count={donor_count_before}")
-            print(f"After:  collected_amount={collected_after}, donor_count={donor_count_after}")
-            print(f"Diff:   collected_amount +{collected_diff}, donor_count +{donor_count_diff}")
-            
-            if collected_diff == amount:
-                print(f"✅ PASS - collected_amount increased by exactly {amount}")
-            else:
-                print(f"❌ FAIL - collected_amount increased by {collected_diff}, expected {amount}")
-                return False
-            
-            if donor_count_diff == 1:
-                print(f"✅ PASS - donor_count increased by 1")
-            else:
-                print(f"❌ FAIL - donor_count increased by {donor_count_diff}, expected 1")
-                return False
-        else:
-            print(f"⚠️  WARNING - Could not verify campaign increment (status {response_after.status_code})")
+        log_test("Kambing quota update", True, 
+                f"sold increased by 2 ({sold_before} → {sold_after}), remaining decreased by 2 ({remaining_before} → {remaining_after})")
         
         return True
-            
     except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
+        return log_test("Kurban quota donation increment test", False, f"Exception: {str(e)}")
 
-
-def test_donation_without_email():
-    """Test 2: POST /api/donations WITHOUT donor_email - should still work"""
-    print("\n" + "="*80)
-    print("TEST 2: POST /api/donations WITHOUT donor_email (should still work)")
-    print("="*80)
-    
+def test_kurban_campaign_quota_migration():
+    """Test A3: GET /api/campaigns/kurban-peduli-banua has quota field in kurban_options"""
+    print("\n=== TEST A3: Kurban Campaign Quota Migration ===")
     try:
-        url = f"{BASE_URL}/api/donations"
-        payload = {
-            "campaign_slug": "kurban-peduli-banua",
-            "amount": 50000,
-            "donor_name": "Siti Aminah",
-            "donor_whatsapp": "082345678901",
-            "payment_method": "bca"
+        resp = requests.get(f"{BASE_URL}/campaigns/kurban-peduli-banua", timeout=10)
+        if resp.status_code != 200:
+            return log_test("Get kurban campaign", False, f"Expected 200, got {resp.status_code}")
+        
+        campaign = resp.json()
+        if "kurban_options" not in campaign:
+            return log_test("Kurban campaign has kurban_options", False, "Missing kurban_options field")
+        
+        kurban_options = campaign["kurban_options"]
+        if not isinstance(kurban_options, list) or len(kurban_options) == 0:
+            return log_test("Kurban options is non-empty array", False, f"Got {type(kurban_options)}")
+        
+        # Check each option has numeric quota field
+        all_valid = True
+        for opt in kurban_options:
+            if "quota" not in opt:
+                log_test(f"Option {opt.get('key', 'unknown')} has quota", False, "Missing quota field")
+                all_valid = False
+            elif not isinstance(opt["quota"], (int, float)):
+                log_test(f"Option {opt.get('key', 'unknown')} quota is numeric", False, 
+                        f"Expected numeric, got {type(opt['quota'])}")
+                all_valid = False
+        
+        if all_valid:
+            log_test("Kurban campaign quota migration", True, 
+                    f"All {len(kurban_options)} kurban_options have numeric quota field")
+        
+        return all_valid
+    except Exception as e:
+        return log_test("Kurban campaign quota migration test", False, f"Exception: {str(e)}")
+
+def test_reports_default_all():
+    """Test B1: GET /api/reports (default all) returns correct structure"""
+    print("\n=== TEST B1: Annual Reports Default (all) ===")
+    try:
+        resp = requests.get(f"{BASE_URL}/reports", timeout=10)
+        if resp.status_code != 200:
+            return log_test("Reports endpoint", False, f"Expected 200, got {resp.status_code}")
+        
+        data = resp.json()
+        
+        # Check years array
+        if "years" not in data:
+            return log_test("Reports has years array", False, "Missing 'years' field")
+        
+        years = data["years"]
+        required_years = ["all", "2026", "2025", "2024"]
+        for year in required_years:
+            if year not in years:
+                log_test(f"Years contains {year}", False, f"Missing year {year}")
+                return False
+        
+        log_test("Years array", True, f"Contains required years: {required_years}")
+        
+        # Check numeric totals
+        numeric_fields = ["total_collected", "total_donors", "total_donations"]
+        for field in numeric_fields:
+            if field not in data:
+                log_test(f"Reports has {field}", False, f"Missing field")
+                return False
+            if not isinstance(data[field], (int, float)):
+                log_test(f"{field} is numeric", False, f"Expected numeric, got {type(data[field])}")
+                return False
+        
+        log_test("Numeric totals", True, 
+                f"total_collected={data['total_collected']}, total_donors={data['total_donors']}, total_donations={data['total_donations']}")
+        
+        # Check by_category
+        if "by_category" not in data:
+            return log_test("Reports has by_category", False, "Missing by_category field")
+        
+        by_category = data["by_category"]
+        if not isinstance(by_category, list) or len(by_category) == 0:
+            return log_test("by_category is non-empty array", False, f"Got {type(by_category)} with length {len(by_category) if isinstance(by_category, list) else 'N/A'}")
+        
+        # Verify each category has category and amount
+        for cat in by_category:
+            if "category" not in cat or "amount" not in cat:
+                log_test("by_category items structure", False, f"Missing category or amount in {cat}")
+                return False
+        
+        log_test("by_category", True, f"Non-empty array with {len(by_category)} categories")
+        
+        # Check by_program
+        if "by_program" not in data:
+            return log_test("Reports has by_program", False, "Missing by_program field")
+        
+        by_program = data["by_program"]
+        if not isinstance(by_program, list) or len(by_program) == 0:
+            return log_test("by_program is non-empty array", False, f"Got {type(by_program)}")
+        
+        log_test("by_program", True, f"Non-empty array with {len(by_program)} programs")
+        
+        return True
+    except Exception as e:
+        return log_test("Reports default all test", False, f"Exception: {str(e)}")
+
+def test_reports_year_2025():
+    """Test B2: GET /api/reports?year=2025 returns specific totals"""
+    print("\n=== TEST B2: Annual Reports Year 2025 ===")
+    try:
+        resp = requests.get(f"{BASE_URL}/reports?year=2025", timeout=10)
+        if resp.status_code != 200:
+            return log_test("Reports year 2025", False, f"Expected 200, got {resp.status_code}")
+        
+        data = resp.json()
+        
+        # Verify specific totals
+        expected = {
+            "total_collected": 1340000000,
+            "total_donors": 4120,
+            "total_donations": 6540
         }
         
-        print(f"POST {url}")
-        print(f"Payload: {payload}")
+        all_match = True
+        for field, expected_value in expected.items():
+            if field not in data:
+                log_test(f"2025 has {field}", False, "Missing field")
+                all_match = False
+            elif data[field] != expected_value:
+                log_test(f"2025 {field}", False, f"Expected {expected_value}, got {data[field]}")
+                all_match = False
         
-        response = requests.post(url, json=payload, timeout=10)
-        print(f"Status: {response.status_code}")
+        if all_match:
+            log_test("Reports year 2025 totals", True, 
+                    f"total_collected={data['total_collected']}, total_donors={data['total_donors']}, total_donations={data['total_donations']}")
         
-        if response.status_code == 200:
-            data = response.json()
-            print(f"✅ PASS - Donation without email works")
-            print(f"   unique_code: {data.get('unique_code')}")
-            print(f"   total_amount: {data.get('total_amount')}")
-            print(f"   status: {data.get('status')}")
-            return True
-        else:
-            print(f"❌ FAIL - Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-            
+        return all_match
     except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
+        return log_test("Reports year 2025 test", False, f"Exception: {str(e)}")
 
-
-def test_negative_amount_too_low():
-    """Test 3a: POST /api/donations with amount < 1000 -> 400"""
-    print("\n" + "="*80)
-    print("TEST 3a: POST /api/donations with amount < 1000 (expect 400)")
-    print("="*80)
-    
+def test_reports_year_2024():
+    """Test B3: GET /api/reports?year=2024 returns specific totals"""
+    print("\n=== TEST B3: Annual Reports Year 2024 ===")
     try:
-        url = f"{BASE_URL}/api/donations"
-        payload = {
+        resp = requests.get(f"{BASE_URL}/reports?year=2024", timeout=10)
+        if resp.status_code != 200:
+            return log_test("Reports year 2024", False, f"Expected 200, got {resp.status_code}")
+        
+        data = resp.json()
+        
+        # Verify specific totals
+        expected = {
+            "total_collected": 890000000,
+            "total_donors": 2760,
+            "total_donations": 4180
+        }
+        
+        all_match = True
+        for field, expected_value in expected.items():
+            if field not in data:
+                log_test(f"2024 has {field}", False, "Missing field")
+                all_match = False
+            elif data[field] != expected_value:
+                log_test(f"2024 {field}", False, f"Expected {expected_value}, got {data[field]}")
+                all_match = False
+        
+        if all_match:
+            log_test("Reports year 2024 totals", True, 
+                    f"total_collected={data['total_collected']}, total_donors={data['total_donors']}, total_donations={data['total_donations']}")
+        
+        return all_match
+    except Exception as e:
+        return log_test("Reports year 2024 test", False, f"Exception: {str(e)}")
+
+def test_reports_year_2026_live():
+    """Test B4: GET /api/reports?year=2026 returns live campaign-derived totals"""
+    print("\n=== TEST B4: Annual Reports Year 2026 (Live) ===")
+    try:
+        resp = requests.get(f"{BASE_URL}/reports?year=2026", timeout=10)
+        if resp.status_code != 200:
+            return log_test("Reports year 2026", False, f"Expected 200, got {resp.status_code}")
+        
+        data = resp.json()
+        
+        # Verify numeric totals exist and are > 0
+        if "total_collected" not in data or not isinstance(data["total_collected"], (int, float)):
+            return log_test("2026 total_collected", False, "Missing or non-numeric")
+        
+        if data["total_collected"] <= 0:
+            return log_test("2026 total_collected > 0", False, f"Expected > 0, got {data['total_collected']}")
+        
+        log_test("2026 total_collected", True, f"Live total: {data['total_collected']}")
+        
+        # Verify by_program length === 8 (8 campaigns seeded)
+        if "by_program" not in data:
+            return log_test("2026 has by_program", False, "Missing by_program")
+        
+        by_program = data["by_program"]
+        if not isinstance(by_program, list):
+            return log_test("2026 by_program is array", False, f"Got {type(by_program)}")
+        
+        if len(by_program) != 8:
+            return log_test("2026 by_program length", False, f"Expected 8 programs, got {len(by_program)}")
+        
+        log_test("2026 by_program", True, f"Contains {len(by_program)} programs (8 campaigns)")
+        
+        return True
+    except Exception as e:
+        return log_test("Reports year 2026 test", False, f"Exception: {str(e)}")
+
+def test_reports_year_invalid():
+    """Test B5: GET /api/reports?year=1999 returns 404 with years array"""
+    print("\n=== TEST B5: Annual Reports Invalid Year (1999) ===")
+    try:
+        resp = requests.get(f"{BASE_URL}/reports?year=1999", timeout=10)
+        if resp.status_code != 404:
+            return log_test("Reports year 1999 status", False, f"Expected 404, got {resp.status_code}")
+        
+        log_test("Reports year 1999 returns 404", True, "Correct HTTP status")
+        
+        data = resp.json()
+        if "years" not in data:
+            return log_test("404 response includes years array", False, "Missing 'years' field")
+        
+        years = data["years"]
+        if not isinstance(years, list) or len(years) == 0:
+            return log_test("years array is non-empty", False, f"Got {type(years)}")
+        
+        log_test("404 response includes years array", True, f"years: {years}")
+        
+        return True
+    except Exception as e:
+        return log_test("Reports invalid year test", False, f"Exception: {str(e)}")
+
+def test_donation_regression():
+    """Test C: Light regression on POST /api/donations for non-kurban campaign"""
+    print("\n=== TEST C: Donation Regression (Non-Kurban Campaign) ===")
+    try:
+        # Get campaign before donation
+        resp = requests.get(f"{BASE_URL}/campaigns/wakaf-al-quran-santri-pelosok", timeout=10)
+        if resp.status_code != 200:
+            return log_test("Get campaign before", False, f"Status {resp.status_code}")
+        
+        campaign_before = resp.json()
+        collected_before = campaign_before.get("collected_amount", 0)
+        donor_count_before = campaign_before.get("donor_count", 0)
+        log_test("Capture campaign state BEFORE", True, 
+                f"collected={collected_before}, donor_count={donor_count_before}")
+        
+        # Create normal donation
+        donation_data = {
             "campaign_slug": "wakaf-al-quran-santri-pelosok",
-            "amount": 500,
-            "donor_name": "Test User",
-            "donor_whatsapp": "081234567890"
+            "amount": 100000,
+            "donor_name": "Fatimah Zahra",
+            "donor_whatsapp": "08567891234"
         }
         
-        print(f"POST {url}")
-        print(f"Payload: {payload}")
+        resp = requests.post(f"{BASE_URL}/donations", json=donation_data, timeout=10)
+        if resp.status_code != 200:
+            return log_test("POST donation", False, f"Expected 200, got {resp.status_code}: {resp.text}")
         
-        response = requests.post(url, json=payload, timeout=10)
-        print(f"Status: {response.status_code}")
+        donation = resp.json()
         
-        if response.status_code == 400:
-            print(f"✅ PASS - Got 400 as expected")
-            print(f"   Response: {response.text}")
-            return True
-        else:
-            print(f"❌ FAIL - Expected 400, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-            
+        # Verify unique_code (100-999)
+        unique_code = donation.get("unique_code")
+        if not isinstance(unique_code, int) or unique_code < 100 or unique_code > 999:
+            return log_test("unique_code range", False, f"Expected 100-999, got {unique_code}")
+        
+        log_test("unique_code", True, f"Generated: {unique_code}")
+        
+        # Verify total_amount = amount + unique_code
+        expected_total = 100000 + unique_code
+        if donation.get("total_amount") != expected_total:
+            return log_test("total_amount calculation", False, 
+                          f"Expected {expected_total}, got {donation.get('total_amount')}")
+        
+        log_test("total_amount", True, f"Correct: {donation.get('total_amount')} = 100000 + {unique_code}")
+        
+        # Verify status = 'pending'
+        if donation.get("status") != "pending":
+            return log_test("status", False, f"Expected 'pending', got {donation.get('status')}")
+        
+        log_test("status", True, "Correct: 'pending'")
+        
+        # Wait for DB update
+        time.sleep(0.5)
+        
+        # Get campaign after donation
+        resp = requests.get(f"{BASE_URL}/campaigns/wakaf-al-quran-santri-pelosok", timeout=10)
+        if resp.status_code != 200:
+            return log_test("Get campaign after", False, f"Status {resp.status_code}")
+        
+        campaign_after = resp.json()
+        collected_after = campaign_after.get("collected_amount", 0)
+        donor_count_after = campaign_after.get("donor_count", 0)
+        
+        # Verify collected_amount increased by 100000
+        collected_diff = collected_after - collected_before
+        if collected_diff != 100000:
+            return log_test("collected_amount increment", False, 
+                          f"Expected +100000, got +{collected_diff} (before: {collected_before}, after: {collected_after})")
+        
+        log_test("collected_amount increment", True, f"+100000 ({collected_before} → {collected_after})")
+        
+        # Verify donor_count increased by 1
+        donor_diff = donor_count_after - donor_count_before
+        if donor_diff != 1:
+            return log_test("donor_count increment", False, 
+                          f"Expected +1, got +{donor_diff} (before: {donor_count_before}, after: {donor_count_after})")
+        
+        log_test("donor_count increment", True, f"+1 ({donor_count_before} → {donor_count_after})")
+        
+        return True
     except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
-
-
-def test_negative_missing_donor_name():
-    """Test 3b: POST /api/donations without donor_name -> 400"""
-    print("\n" + "="*80)
-    print("TEST 3b: POST /api/donations without donor_name (expect 400)")
-    print("="*80)
-    
-    try:
-        url = f"{BASE_URL}/api/donations"
-        payload = {
-            "campaign_slug": "wakaf-al-quran-santri-pelosok",
-            "amount": 50000,
-            "donor_whatsapp": "081234567890"
-        }
-        
-        print(f"POST {url}")
-        print(f"Payload: {payload}")
-        
-        response = requests.post(url, json=payload, timeout=10)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 400:
-            print(f"✅ PASS - Got 400 as expected")
-            print(f"   Response: {response.text}")
-            return True
-        else:
-            print(f"❌ FAIL - Expected 400, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
-
-
-def test_negative_missing_donor_whatsapp():
-    """Test 3c: POST /api/donations without donor_whatsapp -> 400"""
-    print("\n" + "="*80)
-    print("TEST 3c: POST /api/donations without donor_whatsapp (expect 400)")
-    print("="*80)
-    
-    try:
-        url = f"{BASE_URL}/api/donations"
-        payload = {
-            "campaign_slug": "wakaf-al-quran-santri-pelosok",
-            "amount": 50000,
-            "donor_name": "Test User"
-        }
-        
-        print(f"POST {url}")
-        print(f"Payload: {payload}")
-        
-        response = requests.post(url, json=payload, timeout=10)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 400:
-            print(f"✅ PASS - Got 400 as expected")
-            print(f"   Response: {response.text}")
-            return True
-        else:
-            print(f"❌ FAIL - Expected 400, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
-
-
-def test_regression_campaigns():
-    """Test 4a: GET /api/campaigns (expect 8 campaigns)"""
-    print("\n" + "="*80)
-    print("TEST 4a: GET /api/campaigns (expect 8 campaigns)")
-    print("="*80)
-    
-    try:
-        url = f"{BASE_URL}/api/campaigns"
-        print(f"GET {url}")
-        
-        response = requests.get(url, timeout=10)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            count = len(data)
-            
-            if count == 8:
-                print(f"✅ PASS - Got exactly 8 campaigns")
-                return True
-            else:
-                print(f"❌ FAIL - Got {count} campaigns, expected 8")
-                return False
-        else:
-            print(f"❌ FAIL - Expected 200, got {response.status_code}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
-
-
-def test_regression_prayers():
-    """Test 4b: GET /api/prayers (expect >= 8 items)"""
-    print("\n" + "="*80)
-    print("TEST 4b: GET /api/prayers (expect >= 8 items)")
-    print("="*80)
-    
-    try:
-        url = f"{BASE_URL}/api/prayers"
-        print(f"GET {url}")
-        
-        response = requests.get(url, timeout=10)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            count = len(data)
-            
-            if count >= 8:
-                print(f"✅ PASS - Got {count} prayers (>= 8)")
-                return True
-            else:
-                print(f"❌ FAIL - Got {count} prayers (< 8)")
-                return False
-        else:
-            print(f"❌ FAIL - Expected 200, got {response.status_code}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
-
-
-def test_regression_stats():
-    """Test 4c: GET /api/stats (has required fields)"""
-    print("\n" + "="*80)
-    print("TEST 4c: GET /api/stats (has required fields)")
-    print("="*80)
-    
-    try:
-        url = f"{BASE_URL}/api/stats"
-        print(f"GET {url}")
-        
-        response = requests.get(url, timeout=10)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            required_fields = [
-                "humanitarian", "wakaf_quran", "panti", "pemberdayaan",
-                "total_collected", "total_donors", "total_target", 
-                "total_donations", "active_campaigns"
-            ]
-            
-            missing_fields = [f for f in required_fields if f not in data]
-            
-            if not missing_fields:
-                print(f"✅ PASS - All required fields present")
-                print(f"   Fields: {', '.join(required_fields)}")
-                return True
-            else:
-                print(f"❌ FAIL - Missing fields: {', '.join(missing_fields)}")
-                return False
-        else:
-            print(f"❌ FAIL - Expected 200, got {response.status_code}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
-
-
-def test_regression_admin_summary():
-    """Test 4d: GET /api/admin/summary with x-admin-key (200 with required fields)"""
-    print("\n" + "="*80)
-    print("TEST 4d: GET /api/admin/summary with x-admin-key")
-    print("="*80)
-    
-    try:
-        url = f"{BASE_URL}/api/admin/summary"
-        print(f"GET {url}")
-        print(f"Headers: x-admin-key={ADMIN_KEY}")
-        
-        response = requests.get(url, headers=ADMIN_HEADERS, timeout=10)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            required_fields = [
-                "total_donations", "verified", "pending", 
-                "total_verified", "total_all", "confirmations"
-            ]
-            
-            missing_fields = [f for f in required_fields if f not in data]
-            
-            if not missing_fields:
-                print(f"✅ PASS - All required fields present")
-                print(f"   total_donations: {data.get('total_donations')}")
-                print(f"   verified: {data.get('verified')}")
-                print(f"   pending: {data.get('pending')}")
-                return True
-            else:
-                print(f"❌ FAIL - Missing fields: {', '.join(missing_fields)}")
-                return False
-        else:
-            print(f"❌ FAIL - Expected 200, got {response.status_code}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
-
-
-def test_regression_admin_login():
-    """Test 4e: POST /api/admin/login with correct key (200)"""
-    print("\n" + "="*80)
-    print("TEST 4e: POST /api/admin/login with correct key")
-    print("="*80)
-    
-    try:
-        url = f"{BASE_URL}/api/admin/login"
-        payload = {"key": ADMIN_KEY}
-        
-        print(f"POST {url}")
-        print(f"Payload: {payload}")
-        
-        response = requests.post(url, json=payload, timeout=10)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("ok"):
-                print(f"✅ PASS - Admin login successful")
-                return True
-            else:
-                print(f"❌ FAIL - Response ok=false")
-                return False
-        else:
-            print(f"❌ FAIL - Expected 200, got {response.status_code}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ FAIL - Exception: {str(e)}")
-        return False
-
+        return log_test("Donation regression test", False, f"Exception: {str(e)}")
 
 def main():
-    print("\n" + "="*80)
-    print("YABABERMA BACKEND TEST - Admin Notification Email Regression")
-    print("="*80)
-    print(f"Base URL: {BASE_URL}")
-    print(f"Admin Key: {ADMIN_KEY}")
-    print("\nTesting: sendAdminNotifyEmail(donation) on POST /api/donations")
-    print("Must NOT block or break the donation endpoint")
+    print("=" * 70)
+    print("YABABERMA Backend API Test Suite")
+    print("Testing: Kurban Quota, Annual Reports, Donation Regression")
+    print("=" * 70)
     
-    results = {}
+    results = []
     
-    # Test 1: Donation with email (main test)
-    results["donation_with_email"] = test_donation_with_email()
+    # Test A: Kurban real-time quota
+    results.append(("A1: Kurban Quota Structure", test_kurban_quota_structure()))
+    results.append(("A2: Kurban Quota Donation Increment", test_kurban_quota_donation_increment()))
+    results.append(("A3: Kurban Campaign Quota Migration", test_kurban_campaign_quota_migration()))
     
-    # Test 2: Donation without email
-    results["donation_without_email"] = test_donation_without_email()
+    # Test B: Annual reports
+    results.append(("B1: Reports Default (all)", test_reports_default_all()))
+    results.append(("B2: Reports Year 2025", test_reports_year_2025()))
+    results.append(("B3: Reports Year 2024", test_reports_year_2024()))
+    results.append(("B4: Reports Year 2026 (Live)", test_reports_year_2026_live()))
+    results.append(("B5: Reports Invalid Year (1999)", test_reports_year_invalid()))
     
-    # Test 3: Negative cases
-    results["negative_amount_low"] = test_negative_amount_too_low()
-    results["negative_missing_name"] = test_negative_missing_donor_name()
-    results["negative_missing_whatsapp"] = test_negative_missing_donor_whatsapp()
-    
-    # Test 4: Quick regression
-    results["regression_campaigns"] = test_regression_campaigns()
-    results["regression_prayers"] = test_regression_prayers()
-    results["regression_stats"] = test_regression_stats()
-    results["regression_admin_summary"] = test_regression_admin_summary()
-    results["regression_admin_login"] = test_regression_admin_login()
+    # Test C: Donation regression
+    results.append(("C: Donation Regression", test_donation_regression()))
     
     # Summary
-    print("\n" + "="*80)
+    print("\n" + "=" * 70)
     print("TEST SUMMARY")
-    print("="*80)
+    print("=" * 70)
     
-    passed = sum(1 for v in results.values() if v)
+    passed = sum(1 for _, result in results if result)
     total = len(results)
     
-    for test_name, passed_flag in results.items():
-        status = "✅ PASS" if passed_flag else "❌ FAIL"
-        print(f"{status} - {test_name}")
+    for name, result in results:
+        status = "✅ PASS" if result else "❌ FAIL"
+        print(f"{status} - {name}")
     
-    print(f"\nTotal: {passed}/{total} tests passed")
+    print("=" * 70)
+    print(f"TOTAL: {passed}/{total} tests passed")
+    print("=" * 70)
     
-    if passed == total:
-        print("\n🎉 ALL TESTS PASSED!")
-        print("\nConclusion:")
-        print("- sendAdminNotifyEmail(donation) is working correctly")
-        print("- Email is fire-and-forget and does NOT block the API response")
-        print("- POST /api/donations returns quickly (< 2s)")
-        print("- Campaign progress increment working correctly")
-        print("- All negative validations working")
-        print("- Quick regression passed (campaigns, prayers, stats, admin endpoints)")
-        print("\nNote: Email delivery may fail (yababerma.org domain unverified in Resend)")
-        print("      but this does NOT affect the API responses - as expected.")
-        return 0
-    else:
-        print(f"\n⚠️  {total - passed} test(s) failed")
-        return 1
-
+    return 0 if passed == total else 1
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

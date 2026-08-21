@@ -12,9 +12,13 @@ import { Minus, Plus, CheckCircle2, Sparkles, Users, Clock } from 'lucide-react'
 
 export default function KurbanPage() {
   const { data: c } = useApi('/api/campaigns/kurban-peduli-banua');
+  const { data: quotaData } = useApi('/api/kurban/quota');
   const [qty, setQty] = useState({});
-  const getQty = (k) => qty[k] || 1;
-  const setQ = (k, v) => setQty((s) => ({ ...s, [k]: Math.max(1, Math.min(99, v)) }));
+  const quotaMap = {};
+  (quotaData?.options || []).forEach((o) => { quotaMap[o.key] = o; });
+  const remainingOf = (k) => { const info = quotaMap[k]; return info && info.remaining != null ? info.remaining : 99; };
+  const getQty = (k) => Math.min(qty[k] || 1, Math.max(remainingOf(k), 1));
+  const setQ = (k, v) => setQty((s) => ({ ...s, [k]: Math.max(1, Math.min(remainingOf(k) || 1, Math.min(99, v))) }));
   const options = (c && c.kurban_options) || [];
   const pct = c ? Math.min(Math.round((c.collected_amount / c.target_amount) * 100), 100) : 0;
 
@@ -51,28 +55,50 @@ export default function KurbanPage() {
           {options.map((opt) => {
             const q = getQty(opt.key);
             const total = opt.price * q;
+            const info = quotaMap[opt.key];
+            const quota = info ? info.quota : null;
+            const sold = info ? info.sold : null;
+            const remaining = info ? info.remaining : null;
+            const pct = quota ? Math.min(Math.round((sold / quota) * 100), 100) : 0;
+            const full = remaining != null && remaining <= 0;
             return (
               <Card key={opt.key} className="rounded-2xl p-6 border-border hover:shadow-card transition-all duration-300 flex flex-col">
-                <div className="text-5xl">{opt.emoji}</div>
+                <div className="flex items-start justify-between">
+                  <div className="text-5xl">{opt.emoji}</div>
+                  {info && (full
+                    ? <Badge className="bg-red-100 text-red-600 border-0 hover:bg-red-100">Kuota Penuh</Badge>
+                    : <Badge className="bg-brand-greenlight text-brand-green border-0 hover:bg-brand-greenlight">Sisa {remaining} {opt.unit}</Badge>)}
+                </div>
                 <h3 className="font-heading font-bold text-xl text-brand-ink mt-3">{opt.name}</h3>
                 <p className="text-sm text-muted-foreground mt-1">{opt.desc}</p>
                 <div className="mt-4 text-2xl font-extrabold text-brand-green">{formatRupiah(opt.price)}<span className="text-sm font-medium text-muted-foreground">/{opt.unit}</span></div>
 
+                {info && (
+                  <div className="mt-4">
+                    <div className="flex justify-between text-xs mb-1.5"><span className="text-muted-foreground">Terisi {sold} dari {quota} {opt.unit}</span><span className="font-semibold text-brand-green">{pct}%</span></div>
+                    <Progress value={pct} className="h-2" />
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between mt-5">
                   <span className="text-sm text-muted-foreground">Jumlah</span>
                   <div className="flex items-center gap-3">
-                    <button onClick={() => setQ(opt.key, q - 1)} className="w-9 h-9 rounded-lg border border-border flex items-center justify-center hover:border-brand-green"><Minus className="w-4 h-4" /></button>
-                    <span className="w-8 text-center font-bold text-brand-ink">{q}</span>
-                    <button onClick={() => setQ(opt.key, q + 1)} className="w-9 h-9 rounded-lg border border-border flex items-center justify-center hover:border-brand-green"><Plus className="w-4 h-4" /></button>
+                    <button onClick={() => setQ(opt.key, q - 1)} disabled={full} className="w-9 h-9 rounded-lg border border-border flex items-center justify-center hover:border-brand-green disabled:opacity-40 disabled:cursor-not-allowed"><Minus className="w-4 h-4" /></button>
+                    <span className="w-8 text-center font-bold text-brand-ink">{full ? 0 : q}</span>
+                    <button onClick={() => setQ(opt.key, q + 1)} disabled={full || (remaining != null && q >= remaining)} className="w-9 h-9 rounded-lg border border-border flex items-center justify-center hover:border-brand-green disabled:opacity-40 disabled:cursor-not-allowed"><Plus className="w-4 h-4" /></button>
                   </div>
                 </div>
 
                 <div className="flex justify-between items-center mt-4 pt-4 border-t border-border">
                   <span className="text-sm text-muted-foreground">Total</span>
-                  <span className="font-bold text-brand-ink">{formatRupiah(total)}</span>
+                  <span className="font-bold text-brand-ink">{formatRupiah(full ? 0 : total)}</span>
                 </div>
 
-                <DonateButton campaign={c} presetAmount={total} presetType={`Kurban ${opt.name} (${q} ${opt.unit})`} className="w-full rounded-xl mt-4 h-11">Kurban Sekarang</DonateButton>
+                {full ? (
+                  <Button disabled className="w-full rounded-xl mt-4 h-11">Kuota Telah Penuh</Button>
+                ) : (
+                  <DonateButton campaign={c} presetAmount={total} presetType={`Kurban ${opt.name} (${q} ${opt.unit})`} kurbanOption={opt.key} kurbanQty={q} className="w-full rounded-xl mt-4 h-11">Kurban Sekarang</DonateButton>
+                )}
               </Card>
             );
           })}

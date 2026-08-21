@@ -1,28 +1,32 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { useApi } from '@/components/site/use-api';
 import CountUp from '@/components/site/count-up';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatRupiah, IMPACT_STATS, ORG, CATEGORY_LABEL } from '@/lib/site-data';
-import { FileBarChart, ShieldCheck, TrendingUp, Users, HandCoins, Target, Printer, Heart, PieChart } from 'lucide-react';
+import { FileBarChart, ShieldCheck, TrendingUp, Users, HandCoins, Target, Printer, Heart, PieChart, Calendar } from 'lucide-react';
+
+const YEAR_LABEL = (y) => (y === 'all' ? 'Semua Tahun' : `Tahun ${y}`);
 
 export default function LaporanPage() {
-  const { data: stats } = useApi('/api/stats');
-  const { data: campaigns } = useApi('/api/campaigns');
+  const [year, setYear] = useState('all');
+  const { data: report } = useApi(`/api/reports?year=${year}`);
 
-  const cats = {};
-  (campaigns || []).forEach((c) => { cats[c.category] = (cats[c.category] || 0) + (c.collected_amount || 0); });
-  const totalCat = Object.values(cats).reduce((a, b) => a + b, 0) || 1;
-  const catRows = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+  const years = report?.years || ['all'];
+  const catRows = (report?.by_category || []).map((c) => [c.category, c.amount]).sort((a, b) => b[1] - a[1]);
+  const totalCat = catRows.reduce((a, b) => a + b[1], 0) || 1;
+  const programs = report?.by_program || [];
 
   const live = [
-    { label: 'Total Dana Terkumpul', value: stats?.total_collected || 0, prefix: 'Rp ', icon: HandCoins },
-    { label: 'Total Donatur', value: stats?.total_donors || 0, suffix: '+', icon: Users },
-    { label: 'Program Aktif', value: stats?.active_campaigns || 0, icon: Target },
-    { label: 'Total Target Dana', value: stats?.total_target || 0, prefix: 'Rp ', icon: TrendingUp },
+    { label: 'Total Dana Terkumpul', value: report?.total_collected || 0, prefix: 'Rp ', icon: HandCoins },
+    { label: 'Total Donatur', value: report?.total_donors || 0, suffix: '+', icon: Users },
+    { label: 'Total Donasi', value: report?.total_donations || 0, suffix: '+', icon: FileBarChart },
+    { label: 'Jumlah Program', value: programs.length || 0, icon: Target },
   ];
 
   return (
@@ -33,12 +37,27 @@ export default function LaporanPage() {
           <div className="inline-flex items-center gap-2 text-brand-green font-semibold text-sm mb-3"><FileBarChart className="w-5 h-5" />Laporan Publik</div>
           <h1 className="text-3xl md:text-5xl font-extrabold max-w-2xl leading-tight">Laporan Dampak &amp; Transparansi</h1>
           <p className="text-white/80 mt-4 max-w-xl">Komitmen kami pada amanah: setiap rupiah donasi Anda kami laporkan secara terbuka. Data diperbarui langsung dari sistem kami.</p>
-          <Button onClick={() => window.print()} variant="secondary" className="rounded-xl mt-7 bg-white text-brand-ink hover:bg-white/90"><Printer className="w-4 h-4 mr-2" />Unduh / Cetak Laporan</Button>
+          <div className="flex flex-wrap items-center gap-3 mt-7">
+            <div className="flex items-center gap-2 bg-white/10 rounded-xl pl-3 pr-1 py-1">
+              <Calendar className="w-4 h-4 text-white/80" />
+              <Select value={year} onValueChange={setYear}>
+                <SelectTrigger className="w-[150px] bg-transparent border-0 text-white focus:ring-0 focus:ring-offset-0 h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {years.map((y) => (<SelectItem key={y} value={y}>{YEAR_LABEL(y)}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={() => window.print()} variant="secondary" className="rounded-xl bg-white text-brand-ink hover:bg-white/90"><Printer className="w-4 h-4 mr-2" />Unduh / Cetak Laporan</Button>
+          </div>
         </div>
       </section>
 
       {/* LIVE STATS */}
       <section className="container py-14">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-5">
+          <h2 className="text-lg font-bold text-brand-ink">Ringkasan {YEAR_LABEL(year)}</h2>
+          <span className="text-xs text-muted-foreground">Menampilkan data periode {year === 'all' ? 'kumulatif semua tahun' : year}</span>
+        </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {live.map((s) => {
             const Icon = s.icon;
@@ -90,13 +109,19 @@ export default function LaporanPage() {
           <p className="text-brand-green font-semibold text-sm uppercase tracking-wide mb-2 flex items-center gap-2"><TrendingUp className="w-4 h-4" />Progres Program</p>
           <h2 className="text-2xl md:text-3xl font-extrabold text-brand-ink mb-6">Capaian Setiap Program</h2>
           <div className="space-y-4">
-            {(campaigns || []).map((c) => {
-              const p = Math.min(Math.round((c.collected_amount / c.target_amount) * 100), 100);
-              return (
-                <Link key={c.id} href={`/donasi/${c.slug}`} className="block">
+            {programs.length === 0 && <p className="text-muted-foreground">Memuat data...</p>}
+            {programs.map((c, i) => {
+              const p = Math.min(Math.round((c.collected / (c.target || 1)) * 100), 100);
+              const inner = (
+                <>
                   <div className="flex justify-between text-sm mb-1"><span className="text-brand-ink font-medium line-clamp-1">{c.title}</span><span className="text-brand-green font-semibold shrink-0 ml-2">{p}%</span></div>
                   <Progress value={p} className="h-2" />
-                </Link>
+                </>
+              );
+              return c.slug ? (
+                <Link key={c.slug || i} href={`/donasi/${c.slug}`} className="block">{inner}</Link>
+              ) : (
+                <div key={i} className="block">{inner}</div>
               );
             })}
           </div>
