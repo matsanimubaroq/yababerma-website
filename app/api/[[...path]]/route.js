@@ -415,7 +415,7 @@ async function handleRoute(request, { params }) {
       const q = {}
       if (category && category !== 'semua') q.category = category
       if (featured === 'true') q.featured = true
-      const items = await db.collection('campaigns').find(q).toArray()
+      const items = await db.collection('campaigns').find(q).limit(200).toArray()
       return handleCORS(NextResponse.json(cleanArr(items)))
     }
 
@@ -483,7 +483,7 @@ async function handleRoute(request, { params }) {
       if (email) q.donor_email = email
       else if (currentUser) q.donor_email = currentUser.email
       else return handleCORS(NextResponse.json([]))
-      const items = await db.collection('donations').find(q).sort({ created_at: -1 }).toArray()
+      const items = await db.collection('donations').find(q).sort({ created_at: -1 }).limit(200).toArray()
       return handleCORS(NextResponse.json(cleanArr(items)))
     }
 
@@ -526,7 +526,7 @@ async function handleRoute(request, { params }) {
 
     // ---- News ----
     if (route === '/news' && method === 'GET') {
-      const items = await db.collection('news').find({}).sort({ date: -1 }).toArray()
+      const items = await db.collection('news').find({}).sort({ date: -1 }).limit(50).toArray()
       return handleCORS(NextResponse.json(cleanArr(items)))
     }
     if (path[0] === 'news' && path[1] && method === 'GET') {
@@ -537,17 +537,17 @@ async function handleRoute(request, { params }) {
 
     // ---- Testimonials & Gallery ----
     if (route === '/testimonials' && method === 'GET') {
-      const items = await db.collection('testimonials').find({}).toArray()
+      const items = await db.collection('testimonials').find({}).limit(50).toArray()
       return handleCORS(NextResponse.json(cleanArr(items)))
     }
     if (route === '/gallery' && method === 'GET') {
-      const items = await db.collection('gallery').find({}).toArray()
+      const items = await db.collection('gallery').find({}).limit(100).toArray()
       return handleCORS(NextResponse.json(cleanArr(items)))
     }
 
     // ---- Stats ----
     if (route === '/stats' && method === 'GET') {
-      const campaigns = await db.collection('campaigns').find({}).toArray()
+      const campaigns = await db.collection('campaigns').find({}).limit(200).toArray()
       const total_collected = campaigns.reduce((s, c) => s + (c.collected_amount || 0), 0)
       const total_donors = campaigns.reduce((s, c) => s + (c.donor_count || 0), 0)
       const total_target = campaigns.reduce((s, c) => s + (c.target_amount || 0), 0)
@@ -563,7 +563,7 @@ async function handleRoute(request, { params }) {
       const camp = await db.collection('campaigns').findOne({ slug: 'kurban-peduli-banua' })
       const opts = (camp && Array.isArray(camp.kurban_options) && camp.kurban_options[0] && camp.kurban_options[0].quota != null)
         ? camp.kurban_options : KURBAN_OPTIONS
-      const dons = await db.collection('donations').find({ campaign_slug: 'kurban-peduli-banua', kurban_option: { $nin: [null, ''] } }).toArray()
+      const dons = await db.collection('donations').find({ campaign_slug: 'kurban-peduli-banua', kurban_option: { $nin: [null, ''] } }).limit(5000).toArray()
       const soldMap = {}
       dons.forEach(d => { const q = Number(d.kurban_qty) || 1; soldMap[d.kurban_option] = (soldMap[d.kurban_option] || 0) + q })
       const options = opts.map(o => {
@@ -582,7 +582,7 @@ async function handleRoute(request, { params }) {
       const currentYear = new Date().getFullYear()
 
       // Live current-year figures derived from live campaigns + donations
-      const campaigns = await db.collection('campaigns').find({}).toArray()
+      const campaigns = await db.collection('campaigns').find({}).limit(200).toArray()
       const catMap = {}
       campaigns.forEach(c => { catMap[c.category] = (catMap[c.category] || 0) + (c.collected_amount || 0) })
       const liveDoc = {
@@ -594,7 +594,7 @@ async function handleRoute(request, { params }) {
         by_program: campaigns.map(c => ({ title: c.title, slug: c.slug, collected: c.collected_amount || 0, target: c.target_amount || 0 })),
       }
 
-      const history = cleanArr(await db.collection('annual_reports').find({}).sort({ year: -1 }).toArray())
+      const history = cleanArr(await db.collection('annual_reports').find({}).sort({ year: -1 }).limit(20).toArray())
       const allDocs = [liveDoc, ...history.filter(h => h.year !== currentYear)]
       const years = ['all', ...allDocs.map(d => String(d.year)).sort((a, b) => Number(b) - Number(a))]
 
@@ -677,7 +677,7 @@ async function handleRoute(request, { params }) {
     if (route === '/prayers' && method === 'GET') {
       const real = await db.collection('donations').find({ message: { $nin: [null, ''] } }).sort({ created_at: -1 }).limit(20).toArray()
       const realMapped = real.map(d => ({ name: d.is_anonymous ? 'Hamba Allah' : (d.donor_name || 'Hamba Allah'), message: d.message, program: d.campaign_title || '' }))
-      const seeded = await db.collection('prayers').find({}).sort({ created_at: -1 }).toArray()
+      const seeded = await db.collection('prayers').find({}).sort({ created_at: -1 }).limit(50).toArray()
       const seededMapped = seeded.map(p => ({ name: p.name, message: p.message, program: p.program }))
       const all = [...realMapped, ...seededMapped].slice(0, 30)
       return handleCORS(NextResponse.json(all))
@@ -694,7 +694,7 @@ async function handleRoute(request, { params }) {
       if (!isAdmin(request)) return handleCORS(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
 
       if (route === '/admin/summary' && method === 'GET') {
-        const donations = await db.collection('donations').find({}).toArray()
+        const donations = await db.collection('donations').find({}).limit(10000).toArray()
         const verified = donations.filter(d => d.status === 'verified')
         const total_verified = verified.reduce((s, d) => s + (d.amount || 0), 0)
         const total_all = donations.reduce((s, d) => s + (d.amount || 0), 0)
