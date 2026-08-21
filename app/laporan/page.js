@@ -9,9 +9,17 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatRupiah, IMPACT_STATS, ORG, CATEGORY_LABEL } from '@/lib/site-data';
-import { FileBarChart, ShieldCheck, TrendingUp, Users, HandCoins, Target, Printer, Heart, PieChart, Calendar } from 'lucide-react';
+import { FileBarChart, ShieldCheck, TrendingUp, Users, HandCoins, Target, Printer, Heart, PieChart as PieIcon, Calendar, BarChart3 } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 const YEAR_LABEL = (y) => (y === 'all' ? 'Semua Tahun' : `Tahun ${y}`);
+const CHART_COLORS = ['#00A651', '#0082C8', '#F59E0B', '#8B5CF6', '#EF4444', '#14B8A6', '#EC4899', '#64748B'];
+const shortRp = (n) => {
+  const v = Number(n) || 0;
+  if (v >= 1e9) return 'Rp ' + (v / 1e9).toFixed(1).replace('.0', '') + ' M';
+  if (v >= 1e6) return 'Rp ' + (v / 1e6).toFixed(0) + ' jt';
+  return 'Rp ' + v.toLocaleString('id-ID');
+};
 
 export default function LaporanPage() {
   const [year, setYear] = useState('all');
@@ -21,6 +29,8 @@ export default function LaporanPage() {
   const catRows = (report?.by_category || []).map((c) => [c.category, c.amount]).sort((a, b) => b[1] - a[1]);
   const totalCat = catRows.reduce((a, b) => a + b[1], 0) || 1;
   const programs = report?.by_program || [];
+  const pieData = catRows.map(([cat, val]) => ({ name: CATEGORY_LABEL[cat] || cat, value: val }));
+  const barData = programs.map((p) => ({ name: (p.title || '').replace('Yayasan ', '').replace('Banua Berkah', 'BB').slice(0, 20), Terkumpul: p.collected || 0, Target: p.target || 0 }));
 
   const live = [
     { label: 'Total Dana Terkumpul', value: report?.total_collected || 0, prefix: 'Rp ', icon: HandCoins },
@@ -72,6 +82,49 @@ export default function LaporanPage() {
         </div>
       </section>
 
+      {/* CHARTS */}
+      <section className="container pb-4">
+        <div className="grid lg:grid-cols-2 gap-6">
+          <Card className="rounded-2xl p-6 border-border">
+            <p className="text-brand-green font-semibold text-sm uppercase tracking-wide mb-1 flex items-center gap-2"><PieIcon className="w-4 h-4" />Distribusi per Kategori</p>
+            <h3 className="text-lg font-bold text-brand-ink mb-4">Komposisi Dana {YEAR_LABEL(year)}</h3>
+            {pieData.length === 0 ? (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">Memuat grafik...</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2}>
+                    {pieData.map((e, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
+                  </Pie>
+                  <Tooltip formatter={(v) => formatRupiah(v)} />
+                  <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+
+          <Card className="rounded-2xl p-6 border-border">
+            <p className="text-brand-green font-semibold text-sm uppercase tracking-wide mb-1 flex items-center gap-2"><BarChart3 className="w-4 h-4" />Dana per Program</p>
+            <h3 className="text-lg font-bold text-brand-ink mb-4">Terkumpul vs Target {YEAR_LABEL(year)}</h3>
+            {barData.length === 0 ? (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">Memuat grafik...</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={barData} layout="vertical" margin={{ left: 10, right: 20, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                  <XAxis type="number" tickFormatter={shortRp} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v) => formatRupiah(v)} cursor={{ fill: 'rgba(0,166,81,0.05)' }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="Target" fill="#CBD5E1" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="Terkumpul" fill="#00A651" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        </div>
+      </section>
+
       {/* IMPACT */}
       <section className="bg-brand-green text-white">
         <div className="container py-14">
@@ -90,7 +143,7 @@ export default function LaporanPage() {
       {/* ALLOCATION BY CATEGORY */}
       <section className="container py-14 grid lg:grid-cols-2 gap-10">
         <div>
-          <p className="text-brand-green font-semibold text-sm uppercase tracking-wide mb-2 flex items-center gap-2"><PieChart className="w-4 h-4" />Distribusi Dana</p>
+          <p className="text-brand-green font-semibold text-sm uppercase tracking-wide mb-2 flex items-center gap-2"><PieIcon className="w-4 h-4" />Distribusi Dana</p>
           <h2 className="text-2xl md:text-3xl font-extrabold text-brand-ink mb-6">Alokasi Dana per Kategori</h2>
           <div className="space-y-4">
             {catRows.length === 0 && <p className="text-muted-foreground">Memuat data...</p>}

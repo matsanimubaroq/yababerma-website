@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { formatRupiah } from '@/lib/site-data';
-import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download } from 'lucide-react';
+import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint } from 'lucide-react';
 
 const KEY_STORAGE = 'yb_admin_key';
 
@@ -20,20 +20,24 @@ export default function AdminPage() {
   const [donations, setDonations] = useState([]);
   const [confs, setConfs] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [kurban, setKurban] = useState([]);
+  const [kurbanSaving, setKurbanSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState('');
 
   const loadAll = useCallback(async (k) => {
     const h = { 'x-admin-key': k };
     try {
-      const [s, d, cf] = await Promise.all([
+      const [s, d, cf, ku] = await Promise.all([
         fetch('/api/admin/summary', { headers: h }).then((r) => r.json()),
         fetch('/api/admin/donations', { headers: h }).then((r) => r.json()),
         fetch('/api/admin/confirmations', { headers: h }).then((r) => r.json()),
+        fetch('/api/admin/kurban', { headers: h }).then((r) => r.json()),
       ]);
       setSummary(s && !s.error ? s : null);
       setDonations(Array.isArray(d) ? d : []);
       setConfs(Array.isArray(cf) ? cf : []);
+      setKurban(ku && Array.isArray(ku.options) ? ku.options : []);
     } catch (e) { toast.error('Gagal memuat data'); }
   }, []);
 
@@ -60,7 +64,20 @@ export default function AdminPage() {
     } catch { toast.error('Terjadi kesalahan'); } finally { setBusy(''); }
   };
 
-  const logout = () => { localStorage.removeItem(KEY_STORAGE); setAuthed(false); setKey(''); setDonations([]); setConfs([]); setSummary(null); };
+  const logout = () => { localStorage.removeItem(KEY_STORAGE); setAuthed(false); setKey(''); setDonations([]); setConfs([]); setSummary(null); setKurban([]); };
+
+  const setKurbanField = (idx, field, value) => setKurban((arr) => arr.map((o, i) => (i === idx ? { ...o, [field]: value } : o)));
+
+  const saveKurban = async () => {
+    setKurbanSaving(true);
+    try {
+      const payload = { options: kurban.map((o) => ({ key: o.key, quota: Number(o.quota) || 0, sold_base: Number(o.sold_base) || 0 })) };
+      const r = await fetch('/api/admin/kurban-quota', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': key }, body: JSON.stringify(payload) });
+      const data = await r.json();
+      if (r.ok) { setKurban(Array.isArray(data.options) ? data.options : kurban); toast.success('Kuota kurban berhasil diperbarui'); }
+      else toast.error(data.error || 'Gagal menyimpan kuota');
+    } catch { toast.error('Terjadi kesalahan'); } finally { setKurbanSaving(false); }
+  };
 
   const exportCsv = () => {
     if (!donations.length) { toast.error('Tidak ada data untuk diekspor'); return; }
@@ -135,6 +152,7 @@ export default function AdminPage() {
           <TabsList className="rounded-xl">
             <TabsTrigger value="donasi" className="rounded-lg data-[state=active]:bg-brand-green data-[state=active]:text-white">Donasi ({donations.length})</TabsTrigger>
             <TabsTrigger value="konfirmasi" className="rounded-lg data-[state=active]:bg-brand-green data-[state=active]:text-white">Konfirmasi Transfer ({confs.length})</TabsTrigger>
+            <TabsTrigger value="kurban" className="rounded-lg data-[state=active]:bg-brand-green data-[state=active]:text-white">Kuota Kurban</TabsTrigger>
           </TabsList>
 
           <TabsContent value="donasi" className="mt-4">
@@ -201,6 +219,46 @@ export default function AdminPage() {
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="kurban" className="mt-4">
+            <Card className="rounded-2xl border-border bg-white p-6">
+              <div className="flex items-start gap-3 mb-5">
+                <div className="w-11 h-11 rounded-xl bg-brand-greenlight text-brand-green flex items-center justify-center shrink-0"><PawPrint className="w-6 h-6" /></div>
+                <div>
+                  <h3 className="font-heading font-bold text-lg text-brand-ink">Kelola Kuota Kurban</h3>
+                  <p className="text-sm text-muted-foreground">Atur target kuota tiap musim &amp; jumlah terisi awal (baseline). Sisa kuota di halaman Kurban otomatis dihitung dari baseline + donasi masuk.</p>
+                </div>
+              </div>
+              {kurban.length === 0 ? (
+                <p className="text-muted-foreground text-sm py-6 text-center">Memuat data kuota...</p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-12 gap-3 px-1 text-xs font-medium text-muted-foreground">
+                    <div className="col-span-6 md:col-span-6">Jenis Hewan</div>
+                    <div className="col-span-3 md:col-span-3">Target Kuota</div>
+                    <div className="col-span-3 md:col-span-3">Terisi (Baseline)</div>
+                  </div>
+                  {kurban.map((o, idx) => (
+                    <div key={o.key} className="grid grid-cols-12 gap-3 items-center rounded-xl border border-border p-3">
+                      <div className="col-span-6 md:col-span-6">
+                        <p className="font-semibold text-brand-ink text-sm">{o.name}</p>
+                        <p className="text-xs text-muted-foreground">{formatRupiah(o.price)} / {o.unit}</p>
+                      </div>
+                      <div className="col-span-3 md:col-span-3">
+                        <Input type="number" min="0" value={o.quota} onChange={(e) => setKurbanField(idx, 'quota', e.target.value)} className="rounded-lg" />
+                      </div>
+                      <div className="col-span-3 md:col-span-3">
+                        <Input type="number" min="0" value={o.sold_base} onChange={(e) => setKurbanField(idx, 'sold_base', e.target.value)} className="rounded-lg" />
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-end pt-2">
+                    <Button onClick={saveKurban} disabled={kurbanSaving} className="rounded-xl">{kurbanSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}Simpan Perubahan</Button>
+                  </div>
+                </div>
+              )}
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

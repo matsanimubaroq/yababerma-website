@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import CountUp from '@/components/site/count-up';
-import { ORG, BERKAH_VALUES, IMPACT_STATS, PARTNERS } from '@/lib/site-data';
-import { ShieldCheck, Eye, Compass, Flag, Building2, Users, Heart, CheckCircle2, Award } from 'lucide-react';
+import { ORG, BERKAH_VALUES, IMPACT_STATS, PARTNERS, LOCATIONS, WHATSAPP_ADMIN } from '@/lib/site-data';
+import { ShieldCheck, Eye, Compass, Flag, Building2, Users, Heart, CheckCircle2, Award, MapPin, Navigation, Phone } from 'lucide-react';
 
 const MISI = [
   'Menghimpun & menyalurkan Zakat, Infak, Sedekah, dan Wakaf (ZISWAF) secara amanah dan transparan.',
@@ -147,7 +147,39 @@ export default function TentangKamiPage() {
         </div>
       </section>
 
-      <section className="container pb-20">
+      {/* LOKASI KAMI */}
+      <section className="bg-brand-slatebg">
+        <div className="container py-16">
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <p className="text-brand-green font-semibold text-sm uppercase tracking-wide mb-2 flex items-center justify-center gap-2"><MapPin className="w-4 h-4" />Lokasi Kami</p>
+            <h2 className="text-2xl md:text-4xl font-extrabold text-brand-ink">Kunjungi Lembaga &amp; Panti Asuhan Kami</h2>
+            <p className="text-muted-foreground mt-3">Kami memiliki beberapa lokasi pengasuhan di Kota Banjarmasin. Klik peta untuk melihat titik lokasi yang tepat &amp; petunjuk arah.</p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-5">
+            {LOCATIONS.map((loc) => (
+              <Card key={loc.name} className={`rounded-2xl p-6 border bg-white flex flex-col hover:shadow-card transition-all duration-300 ${loc.primary ? 'border-brand-green/40' : 'border-border'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${loc.primary ? 'bg-brand-green text-white' : 'bg-brand-greenlight text-brand-green'}`}><Building2 className="w-6 h-6" /></div>
+                  <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${loc.primary ? 'bg-brand-green/10 text-brand-green' : 'bg-brand-bluelight text-brand-blue'}`}>{loc.tag}</span>
+                </div>
+                <h3 className="font-heading font-bold text-lg text-brand-ink mt-4 leading-snug">{loc.name}</h3>
+                <p className="text-xs text-brand-green font-medium mt-1">{loc.role}</p>
+                <p className="text-sm text-muted-foreground mt-3 flex items-start gap-2 flex-1"><MapPin className="w-4 h-4 text-brand-green shrink-0 mt-0.5" />{loc.address}</p>
+                <a href={loc.maps} target="_blank" rel="noopener noreferrer" className="mt-4">
+                  <Button variant="outline" className="w-full rounded-xl border-brand-green text-brand-green hover:bg-brand-greenlight"><Navigation className="w-4 h-4 mr-2" />Buka di Google Maps</Button>
+                </a>
+              </Card>
+            ))}
+          </div>
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 text-sm">
+            <a href={`https://wa.me/${WHATSAPP_ADMIN}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-brand-ink hover:text-brand-green font-medium"><Phone className="w-4 h-4 text-brand-green" />{ORG.phone}</a>
+            <span className="hidden sm:inline text-border">•</span>
+            <span className="text-muted-foreground">{ORG.email}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="container pb-20 pt-16">
         <div className="rounded-3xl bg-brand-green text-white p-8 md:p-12 text-center">
           <h2 className="text-2xl md:text-3xl font-extrabold">Mari Bergabung dalam Kebaikan</h2>
           <p className="text-white/80 mt-2">Bersama Anda, kami bisa menjangkau lebih banyak yang membutuhkan.</p>

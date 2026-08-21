@@ -718,6 +718,30 @@ async function handleRoute(request, { params }) {
         if (d && status === 'verified') sendVerifiedEmail(clean(d)).catch(() => {})
         return handleCORS(NextResponse.json({ ok: true, donation: d ? clean(d) : null }))
       }
+
+      // Kurban quota management (admin)
+      if (route === '/admin/kurban' && method === 'GET') {
+        const camp = await db.collection('campaigns').findOne({ slug: 'kurban-peduli-banua' })
+        const opts = (camp && Array.isArray(camp.kurban_options) && camp.kurban_options[0] && camp.kurban_options[0].quota != null) ? camp.kurban_options : KURBAN_OPTIONS
+        return handleCORS(NextResponse.json({ options: opts.map(o => ({ key: o.key, name: o.name, unit: o.unit, price: o.price, quota: o.quota || 0, sold_base: o.sold_base || 0 })) }))
+      }
+      if (route === '/admin/kurban-quota' && method === 'POST') {
+        const body = await request.json()
+        if (!Array.isArray(body.options)) return handleCORS(NextResponse.json({ error: 'options wajib berupa array' }, { status: 400 }))
+        const camp = await db.collection('campaigns').findOne({ slug: 'kurban-peduli-banua' })
+        const base = (camp && Array.isArray(camp.kurban_options) && camp.kurban_options[0] && camp.kurban_options[0].quota != null) ? camp.kurban_options : KURBAN_OPTIONS
+        const updateMap = {}
+        body.options.forEach(o => { if (o && o.key) updateMap[o.key] = o })
+        const merged = base.map(o => {
+          const u = updateMap[o.key]
+          if (!u) return o
+          const quota = u.quota != null && !isNaN(Number(u.quota)) ? Math.max(0, Math.floor(Number(u.quota))) : o.quota
+          const sold_base = u.sold_base != null && !isNaN(Number(u.sold_base)) ? Math.max(0, Math.floor(Number(u.sold_base))) : (o.sold_base || 0)
+          return { ...o, quota, sold_base }
+        })
+        await db.collection('campaigns').updateOne({ slug: 'kurban-peduli-banua' }, { $set: { kurban_options: merged } })
+        return handleCORS(NextResponse.json({ ok: true, options: merged.map(o => ({ key: o.key, name: o.name, unit: o.unit, price: o.price, quota: o.quota || 0, sold_base: o.sold_base || 0 })) }))
+      }
     }
 
     return handleCORS(NextResponse.json({ error: `Route ${route} not found` }, { status: 404 }))

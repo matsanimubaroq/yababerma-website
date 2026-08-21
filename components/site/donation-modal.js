@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { Check, Copy, Loader2, ArrowLeft, Heart, ShieldCheck, MessageCircle, PartyPopper, Award, BookOpen, FileText, Gift, Share2 } from 'lucide-react';
 import { BANKS, WHATSAPP_ADMIN, formatRupiah, waLink, donationWaMessage } from '@/lib/site-data';
 import { isKurbanDonation, downloadKurbanCertificate, isWakafDonation, downloadWakafCertificate, isZakatDonation, downloadZakatReceipt } from '@/lib/receipts';
-import { downloadGreetingCard, shareGreetingWhatsApp } from '@/lib/greeting-card';
+import { downloadGreetingCard, shareGreetingWhatsApp, getGreetingDataUrl } from '@/lib/greeting-card';
 
 const QUICK = [10000, 50000, 100000, 250000, 500000, 1000000];
 
@@ -24,14 +24,23 @@ export function DonationDialog({ open, setOpen, campaign, presetAmount, presetTy
   const [bank, setBank] = useState('bsi');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [cardPreview, setCardPreview] = useState(null);
 
   useEffect(() => {
     if (open) {
       setStep(1);
       setResult(null);
+      setCardPreview(null);
       if (presetAmount) { setAmount(presetAmount); setCustom(String(presetAmount)); }
     }
   }, [open, presetAmount]);
+
+  useEffect(() => {
+    if (result && step === 4) {
+      const id = setTimeout(() => setCardPreview(getGreetingDataUrl(result)), 60);
+      return () => clearTimeout(id);
+    }
+  }, [result, step]);
 
   const selectedBank = BANKS.find((b) => b.code === bank) || BANKS[0];
   const finalAmount = custom ? Number(custom) : amount;
@@ -191,8 +200,16 @@ export function DonationDialog({ open, setOpen, campaign, presetAmount, presetTy
                   <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Bagikan Kebaikan</span>
                   <div className="h-px flex-1 bg-border" />
                 </div>
+                <div className="mt-3 rounded-xl overflow-hidden border border-border bg-brand-slatebg">
+                  {cardPreview ? (
+                    <img src={cardPreview} alt="Kartu Ucapan Kebaikan" className="w-full h-auto block" />
+                  ) : (
+                    <div className="w-full aspect-square flex items-center justify-center text-muted-foreground text-sm gap-2"><Loader2 className="w-4 h-4 animate-spin" />Menyiapkan kartu ucapan...</div>
+                  )}
+                </div>
+                <p className="text-[11px] text-center text-muted-foreground mt-2">Unduh kartu ini &amp; bagikan kebaikan Anda kepada keluarga &amp; sahabat.</p>
                 <div className="grid grid-cols-2 gap-2 mt-2">
-                  <Button variant="outline" onClick={() => downloadGreetingCard(result)} className="rounded-xl border-brand-green text-brand-green hover:bg-brand-greenlight"><Gift className="w-4 h-4 mr-2" />Kartu Ucapan</Button>
+                  <Button variant="outline" onClick={() => downloadGreetingCard(result)} className="rounded-xl border-brand-green text-brand-green hover:bg-brand-greenlight"><Gift className="w-4 h-4 mr-2" />Unduh Kartu</Button>
                   <Button variant="outline" onClick={() => shareGreetingWhatsApp(result)} className="rounded-xl border-[#25D366] text-[#128C4B] hover:bg-[#25D366]/10"><Share2 className="w-4 h-4 mr-2" />Bagikan</Button>
                 </div>
               </div>
