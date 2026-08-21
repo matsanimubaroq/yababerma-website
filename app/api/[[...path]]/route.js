@@ -68,7 +68,7 @@ async function sendDonationEmail(donation) {
           <tr><td style="padding:8px 0;color:#64748b">Bank Tujuan</td><td style="padding:8px 0;text-align:right;font-weight:600">${bank}</td></tr>
           <tr><td style="padding:8px 0;color:#64748b">No. Referensi</td><td style="padding:8px 0;text-align:right;font-weight:600">${escapeHtml(donation.id)}</td></tr>
         </table>
-        <div style="background:#e6f3fb;border-radius:12px;padding:14px;margin-top:16px;font-size:13px;color:#475569">Mohon selesaikan transfer tepat hingga 3 digit terakhir (kode unik) agar donasi mudah terverifikasi. Setelah transfer, konfirmasi via WhatsApp admin: <b>0858-2811-2032</b>.</div>
+        <div style="background:#e6f3fb;border-radius:12px;padding:14px;margin-top:16px;font-size:13px;color:#475569">Mohon selesaikan transfer tepat hingga 3 digit terakhir (kode unik) agar donasi mudah terverifikasi. Setelah transfer, konfirmasi via WhatsApp admin: <b>0878-1810-1175</b>.</div>
         <p style="color:#94a3b8;font-size:12px;margin-top:20px;text-align:center">Semoga menjadi amal jariyah yang berkah. Aamiin.<br/>&copy; 2026 Yayasan Banua Berkah Mandiri</p>
       </div>
     </div>
@@ -393,6 +393,50 @@ function isAdmin(request) {
   return !!key && key === process.env.ADMIN_KEY
 }
 
+function maskEmail(email) {
+  const parts = String(email || '').split('@')
+  if (parts.length !== 2 || !parts[0]) return email || ''
+  const u = parts[0]
+  const masked = u.length <= 2 ? u[0] + '*' : u[0] + '*'.repeat(Math.max(1, u.length - 2)) + u[u.length - 1]
+  return masked + '@' + parts[1]
+}
+
+// Admin key is stored in the `settings` collection (seeded once from env) so it can be reset.
+async function getAdminKey(db) {
+  const doc = await db.collection('settings').findOne({ id: 'admin_auth' })
+  if (doc && doc.password) return doc.password
+  const seed = process.env.ADMIN_KEY || ''
+  if (seed) await db.collection('settings').updateOne({ id: 'admin_auth' }, { $setOnInsert: { id: 'admin_auth', password: seed, created_at: new Date().toISOString() } }, { upsert: true })
+  return seed
+}
+
+async function sendAdminOtpEmail(otp) {
+  if (!resend || !process.env.ADMIN_EMAIL) return false
+  const html = `<!doctype html><html><body style="margin:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#1E293B">
+  <div style="max-width:520px;margin:0 auto;padding:24px">
+    <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
+      <div style="background:#00A651;padding:22px;text-align:center">
+        <img src="${ORG_LOGO}" width="56" height="56" style="background:#fff;border-radius:50%;padding:6px" alt="YABABERMA"/>
+        <h1 style="color:#fff;font-size:17px;margin:10px 0 0">Yayasan Banua Berkah Mandiri</h1>
+      </div>
+      <div style="padding:28px;text-align:center">
+        <h2 style="margin:0 0 6px;font-size:19px">Kode Reset Password Admin</h2>
+        <p style="color:#475569;margin:0 0 18px;line-height:1.6">Gunakan kode verifikasi berikut untuk membuat password admin baru. Abaikan email ini jika Anda tidak meminta reset.</p>
+        <div style="background:#e6f7ee;border-radius:12px;padding:18px;margin:0 auto 14px;max-width:280px">
+          <div style="font-size:34px;font-weight:800;letter-spacing:8px;color:#00A651">${escapeHtml(otp)}</div>
+        </div>
+        <p style="color:#94a3b8;font-size:12px;margin:0">Kode berlaku selama 10 menit.</p>
+      </div>
+    </div>
+  </div>
+</body></html>`
+  try {
+    const { error } = await resend.emails.send({ from: process.env.MAIL_FROM, to: [process.env.ADMIN_EMAIL], subject: 'Kode Reset Password Admin \u2014 YABABERMA', html, text: `Kode verifikasi reset password admin Anda: ${otp}. Berlaku 10 menit.` })
+    if (error) { console.error('Resend(otp) error:', error?.message || JSON.stringify(error)); return false }
+    return true
+  } catch (e) { console.error('Email(otp) exception:', e?.message); return false }
+}
+
 // ---------------- Router ----------------
 async function handleRoute(request, { params }) {
   const { path = [] } = await params
@@ -686,12 +730,46 @@ async function handleRoute(request, { params }) {
     // ---- Admin ----
     if (route === '/admin/login' && method === 'POST') {
       const body = await request.json()
-      if (!body.key || body.key !== process.env.ADMIN_KEY) return handleCORS(NextResponse.json({ error: 'Kunci admin salah' }, { status: 401 }))
+      const adminKey = await getAdminKey(db)
+      if (!body.key || body.key !== adminKey) return handleCORS(NextResponse.json({ error: 'Kunci admin salah' }, { status: 401 }))
+      return handleCORS(NextResponse.json({ ok: true }))
+    }
+
+    // Forgot password: send an OTP to the configured admin email
+    if (route === '/admin/forgot-password' && method === 'POST') {
+      if (!resend || !process.env.ADMIN_EMAIL) return handleCORS(NextResponse.json({ error: 'Email admin belum dikonfigurasi di server.' }, { status: 500 }))
+      const now = Date.now()
+      const existing = await db.collection('settings').findOne({ id: 'admin_reset' })
+      if (existing && existing.last_sent && now - existing.last_sent < 60000) {
+        return handleCORS(NextResponse.json({ error: 'Mohon tunggu 1 menit sebelum meminta kode baru.' }, { status: 429 }))
+      }
+      const otp = String(Math.floor(100000 + Math.random() * 900000))
+      await db.collection('settings').updateOne({ id: 'admin_reset' }, { $set: { id: 'admin_reset', otp, expires_at: now + 10 * 60 * 1000, last_sent: now } }, { upsert: true })
+      const sent = await sendAdminOtpEmail(otp)
+      if (!sent) return handleCORS(NextResponse.json({ error: 'Gagal mengirim email kode. Coba lagi nanti.' }, { status: 502 }))
+      return handleCORS(NextResponse.json({ ok: true, email: maskEmail(process.env.ADMIN_EMAIL) }))
+    }
+
+    // Reset password using OTP
+    if (route === '/admin/reset-password' && method === 'POST') {
+      const body = await request.json()
+      const otp = String(body.otp || '').trim()
+      const newPass = String(body.new_password || '')
+      if (!otp || !newPass) return handleCORS(NextResponse.json({ error: 'Kode OTP dan password baru wajib diisi.' }, { status: 400 }))
+      if (newPass.length < 6) return handleCORS(NextResponse.json({ error: 'Password baru minimal 6 karakter.' }, { status: 400 }))
+      const rec = await db.collection('settings').findOne({ id: 'admin_reset' })
+      if (!rec || !rec.otp) return handleCORS(NextResponse.json({ error: 'Belum ada permintaan reset. Klik "Lupa Password" dulu.' }, { status: 400 }))
+      if (Date.now() > (rec.expires_at || 0)) return handleCORS(NextResponse.json({ error: 'Kode sudah kedaluwarsa. Minta kode baru.' }, { status: 400 }))
+      if (otp !== rec.otp) return handleCORS(NextResponse.json({ error: 'Kode verifikasi salah.' }, { status: 400 }))
+      await db.collection('settings').updateOne({ id: 'admin_auth' }, { $set: { id: 'admin_auth', password: newPass, updated_at: new Date().toISOString() } }, { upsert: true })
+      await db.collection('settings').deleteOne({ id: 'admin_reset' })
       return handleCORS(NextResponse.json({ ok: true }))
     }
 
     if (route.startsWith('/admin')) {
-      if (!isAdmin(request)) return handleCORS(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
+      const adminKey = await getAdminKey(db)
+      const provided = request.headers.get('x-admin-key')
+      if (!provided || provided !== adminKey) return handleCORS(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
 
       if (route === '/admin/summary' && method === 'GET') {
         const donations = await db.collection('donations').find({}).limit(10000).toArray()

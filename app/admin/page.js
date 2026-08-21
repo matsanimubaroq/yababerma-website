@@ -13,7 +13,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { formatRupiah } from '@/lib/site-data';
-import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint, Search, Trash2, LayoutGrid, List as ListIcon, BarChart3, ImageDown, SlidersHorizontal } from 'lucide-react';
+import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint, Search, Trash2, LayoutGrid, List as ListIcon, BarChart3, ImageDown, SlidersHorizontal, Eye, EyeOff, Mail, ArrowLeft, KeyRound } from 'lucide-react';
 
 const CHART_COLORS = ['#00A651', '#0082C8', '#F59E0B', '#8B5CF6', '#EF4444', '#14B8A6', '#EC4899', '#64748B'];
 
@@ -29,6 +29,14 @@ export default function AdminPage() {
   const [kurbanSaving, setKurbanSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState('');
+  // Login UX: show password + forgot/reset flow
+  const [showPass, setShowPass] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
+  const [otp, setOtp] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
   // Toolbar / filters / views / selection
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('newest');
@@ -70,6 +78,26 @@ export default function AdminPage() {
       if (r.ok) { localStorage.setItem(KEY_STORAGE, key); setAuthed(true); await loadAll(key); toast.success('Selamat datang, Admin'); }
       else toast.error('Kunci admin salah');
     } catch { toast.error('Gagal login'); } finally { setLoading(false); }
+  };
+
+  const requestReset = async () => {
+    setResetLoading(true);
+    try {
+      const r = await fetch('/api/admin/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const data = await r.json();
+      if (r.ok) { setResetEmail(data.email || ''); setAuthMode('reset'); toast.success('Kode verifikasi telah dikirim ke email admin'); }
+      else toast.error(data.error || 'Gagal mengirim kode');
+    } catch { toast.error('Terjadi kesalahan'); } finally { setResetLoading(false); }
+  };
+
+  const submitReset = async () => {
+    setResetLoading(true);
+    try {
+      const r = await fetch('/api/admin/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ otp, new_password: newPass }) });
+      const data = await r.json();
+      if (r.ok) { toast.success('Password berhasil diubah. Silakan masuk.'); setKey(newPass); setOtp(''); setNewPass(''); setAuthMode('login'); }
+      else toast.error(data.error || 'Gagal reset password');
+    } catch { toast.error('Terjadi kesalahan'); } finally { setResetLoading(false); }
   };
 
   const verify = async (id, status) => {
@@ -206,15 +234,59 @@ export default function AdminPage() {
   if (!authed) {
     return (
       <div className="container py-24">
-        <Card className="max-w-md mx-auto rounded-2xl p-8 text-center border-border shadow-sm">
-          <div className="w-16 h-16 rounded-2xl bg-brand-greenlight flex items-center justify-center mx-auto mb-4"><ShieldCheck className="w-8 h-8 text-brand-green" /></div>
-          <h1 className="text-2xl font-extrabold text-brand-ink">Panel Admin YABABERMA</h1>
-          <p className="text-muted-foreground mt-2">Masukkan kunci admin untuk meninjau &amp; memverifikasi donasi.</p>
-          <div className="mt-6 text-left">
-            <Label className="text-sm">Kunci Admin</Label>
-            <Input type="password" value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && login()} className="rounded-xl mt-1" placeholder="Masukkan kunci admin" />
+        <Card className="max-w-md mx-auto rounded-2xl p-8 border-border shadow-sm">
+          <div className="text-center">
+            <div className="w-16 h-16 rounded-2xl bg-brand-greenlight flex items-center justify-center mx-auto mb-4"><ShieldCheck className="w-8 h-8 text-brand-green" /></div>
+            <h1 className="text-2xl font-extrabold text-brand-ink">Panel Admin YABABERMA</h1>
           </div>
-          <Button onClick={login} disabled={loading || !key} className="w-full rounded-xl mt-4 h-11">{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (<><LogIn className="w-4 h-4 mr-2" />Masuk</>)}</Button>
+
+          {authMode === 'login' && (
+            <>
+              <p className="text-muted-foreground mt-2 text-center">Masukkan kunci admin untuk meninjau &amp; memverifikasi donasi.</p>
+              <div className="mt-6 text-left">
+                <Label className="text-sm">Kunci Admin</Label>
+                <div className="relative mt-1">
+                  <Input type={showPass ? 'text' : 'password'} value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && login()} className="rounded-xl pr-11" placeholder="Masukkan kunci admin" />
+                  <button type="button" onClick={() => setShowPass((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-brand-ink" title={showPass ? 'Sembunyikan password' : 'Lihat password'}>{showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+                </div>
+              </div>
+              <Button onClick={login} disabled={loading || !key} className="w-full rounded-xl mt-4 h-11">{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (<><LogIn className="w-4 h-4 mr-2" />Masuk</>)}</Button>
+              <button type="button" onClick={() => setAuthMode('forgot')} className="w-full text-center text-sm text-brand-blue hover:underline mt-4">Lupa password?</button>
+            </>
+          )}
+
+          {authMode === 'forgot' && (
+            <>
+              <p className="text-muted-foreground mt-2 text-center">Kami akan mengirim kode verifikasi ke email admin terdaftar untuk membuat password baru.</p>
+              <div className="mt-6 rounded-xl bg-brand-slatebg p-4 flex items-center gap-3 text-sm"><Mail className="w-5 h-5 text-brand-green shrink-0" /><span className="text-brand-ink">Kode dikirim ke email <b>admin@yababerma.org</b></span></div>
+              <Button onClick={requestReset} disabled={resetLoading} className="w-full rounded-xl mt-4 h-11">{resetLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (<><Mail className="w-4 h-4 mr-2" />Kirim Kode Verifikasi</>)}</Button>
+              <button type="button" onClick={() => setAuthMode('login')} className="w-full text-center text-sm text-muted-foreground hover:text-brand-ink mt-4 inline-flex items-center justify-center gap-1"><ArrowLeft className="w-4 h-4" />Kembali ke Masuk</button>
+            </>
+          )}
+
+          {authMode === 'reset' && (
+            <>
+              <p className="text-muted-foreground mt-2 text-center">Masukkan kode 6 digit yang dikirim ke {resetEmail || 'email admin'} lalu buat password baru.</p>
+              <div className="mt-6 text-left space-y-3">
+                <div>
+                  <Label className="text-sm">Kode Verifikasi (OTP)</Label>
+                  <Input value={otp} onChange={(e) => setOtp(e.target.value)} inputMode="numeric" maxLength={6} className="rounded-xl mt-1 tracking-[0.4em] text-center text-lg" placeholder="000000" />
+                </div>
+                <div>
+                  <Label className="text-sm">Password Admin Baru</Label>
+                  <div className="relative mt-1">
+                    <Input type={showNewPass ? 'text' : 'password'} value={newPass} onChange={(e) => setNewPass(e.target.value)} className="rounded-xl pr-11" placeholder="Minimal 6 karakter" />
+                    <button type="button" onClick={() => setShowNewPass((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-brand-ink">{showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+                  </div>
+                </div>
+              </div>
+              <Button onClick={submitReset} disabled={resetLoading || !otp || newPass.length < 6} className="w-full rounded-xl mt-4 h-11">{resetLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (<><KeyRound className="w-4 h-4 mr-2" />Simpan Password Baru</>)}</Button>
+              <div className="flex items-center justify-between mt-4 text-sm">
+                <button type="button" onClick={() => setAuthMode('login')} className="text-muted-foreground hover:text-brand-ink inline-flex items-center gap-1"><ArrowLeft className="w-4 h-4" />Batal</button>
+                <button type="button" onClick={requestReset} disabled={resetLoading} className="text-brand-blue hover:underline">Kirim ulang kode</button>
+              </div>
+            </>
+          )}
         </Card>
       </div>
     );
