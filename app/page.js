@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import CampaignCard from '@/components/site/campaign-card';
 import CountUp from '@/components/site/count-up';
+import PrayerWall from '@/components/site/prayer-wall';
 import { useApi } from '@/components/site/use-api';
 import { HERO_SLIDES, QUICK_SERVICES, IMPACT_STATS, ORG } from '@/lib/site-data';
 
@@ -139,6 +140,8 @@ export default function App() {
           </div>
         </div>
       </section>
+
+      <PrayerWall />
 
       {/* BERITA & ARTIKEL */}
       <section className="container py-16 md:py-20">

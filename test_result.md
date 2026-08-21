@@ -258,6 +258,66 @@ backend:
         -agent: "testing"
         -comment: "✅ PASSED - MongoDB race condition fix verified! Fired 30 concurrent requests across 8 different endpoints (GET /api/campaigns, GET /api/campaigns?featured=true, GET /api/auth/me, GET /api/news, GET /api/stats, GET /api/testimonials, GET /api/gallery, GET /api/campaigns/wakaf-al-quran-santri-pelosok) with ZERO 500 errors (30/30 succeeded). Seeding integrity confirmed: exactly 7 campaigns, 4 news, 4 testimonials, 8 gallery items (no duplicates). Donation flow regression test passed: POST /api/donations creates donation with unique_code (100-999), total_amount=amount+unique_code, status=pending, and correctly increments campaign collected_amount by 50000 and donor_count by 1. All negative test cases still working (amount<1000->400, invalid email->400, /auth/me without cookie->{user:null}, /auth/session without session_id->400). The dbPromise caching pattern successfully prevents the race condition."
 
+  - task: "Prayers wall (Dinding Doa) GET /api/prayers"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "GET /api/prayers returns array of {name, message, program}. Seeds a 'prayers' collection (8 items) on first run and also merges recent real donation messages (message non-empty). Should always return >=8 items."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED - GET /api/prayers returns 10 items (>= 8 required). All items have required fields: name, message, program. Endpoint correctly merges seeded prayers with real donation messages."
+
+  - task: "Kurban campaign seeded with kurban_options"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Campaigns collection was dropped & reseeded to 8 campaigns. GET /api/campaigns must now return 8 (incl category 'kurban'). GET /api/campaigns/kurban-peduli-banua must return campaign with kurban_options[] (kambing, sapi-patungan, sapi-utuh each with price). GET /api/campaigns?category=kurban returns 1. Donation POST with campaign_slug=kurban-peduli-banua must still work + increment."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED (11/11 tests) - GET /api/campaigns returns exactly 8 campaigns (was 7) with kurban category included. GET /api/campaigns/kurban-peduli-banua returns campaign with kurban_options array containing 3 items with correct prices: kambing (2750000), sapi-patungan (2500000), sapi-utuh (17500000). GET /api/campaigns?category=kurban returns exactly 1 campaign. POST donation to kurban campaign works perfectly: unique_code generated (100-999), total_amount calculated correctly, campaign collected_amount increased by 2750000, donor_count increased by 1. All kurban functionality working as expected."
+
+  - task: "Admin endpoints (verify donations, list confirmations)"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Admin key is env ADMIN_KEY=yababerma-admin-2026. POST /api/admin/login {key} -> 200 if correct, 401 if wrong. All /api/admin/* require header 'x-admin-key'. Without/with wrong header -> 401. GET /api/admin/summary, GET /api/admin/donations, GET /api/admin/confirmations return data with correct key. POST /api/admin/verify {donation_id, status:'verified'} sets a donation status to verified; verify by GETting /api/admin/donations. status:'pending' reverts. Missing donation_id -> 400."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED (11/11 tests) - POST /api/admin/login with correct key (yababerma-admin-2026) returns 200 {ok:true}, wrong key returns 401. GET /api/admin/summary without header returns 401, with wrong header returns 401, with correct header returns 200 with all required fields (total_donations, verified, pending, total_verified, confirmations). GET /api/admin/donations returns array of donations. GET /api/admin/confirmations returns array of confirmations. POST /api/admin/verify successfully changes donation status to 'verified' and reverts to 'pending'. Missing donation_id correctly returns 400. All admin authentication and authorization working perfectly."
+
+  - task: "Automatic thank-you email via Resend on donation create"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "Resend integrated (resend@6.21.0). On POST /api/donations, if donor_email present, sends thank-you+receipt HTML email in background (fire-and-forget, does NOT block/slow the response - verified 0.57s). Verified via real Resend API call: returns 200 for donation; Resend responded with a clear 403 'yababerma.org domain is not verified' - i.e. integration is WIRED CORRECTLY. EMAIL DELIVERY is pending the user verifying the yababerma.org domain in Resend (add DNS SPF/DKIM). NOT mocked. RESEND_API_KEY + MAIL_FROM in .env."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ REGRESSION TEST PASSED (5/5 tests). POST /api/donations with email returns 200 in 0.356s (well under 2s requirement) - email is truly fire-and-forget and non-blocking. Donation created with unique_code (716) and total_amount correctly calculated. Campaign collected_amount increased by 75000 and donor_count by 1. POST /api/donations without email also works (returns 200). Core endpoints regression: GET /api/campaigns (8 items), GET /api/campaigns/kurban-peduli-banua (has kurban_options with 3 items), GET /api/prayers (11 items >= 8), GET /api/testimonials (4 items), GET /api/gallery (8 items), GET /api/news (4 items) - all working. Admin endpoints: POST /api/admin/login (200 OK), GET /api/admin/summary (200 with all required fields) - working. Negative test: POST /api/donations with amount=100 correctly returns 400. Email integration is wired correctly and non-blocking as expected."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
@@ -279,3 +339,9 @@ agent_communication:
     -message: "Fixed MongoDB connection race condition in /app/app/api/[[...path]]/route.js. Changed from `let client/db` pattern to cached `dbPromise` pattern to prevent concurrent requests from hitting db=undefined. Please verify with concurrent load testing."
     -agent: "testing"
     -message: "✅ MongoDB race condition fix VERIFIED! Comprehensive concurrency testing with 30 simultaneous requests across all major endpoints resulted in ZERO 500 errors. All functionality intact: seeding integrity confirmed (exact counts), donation flow working perfectly (unique code generation, campaign increment), and all negative test cases passing. The dbPromise caching pattern successfully eliminates the race condition. Backend is production-ready."
+    -agent: "main"
+    -message: "Added new features: 1) Kurban campaign (8th campaign with kurban_options array), 2) Prayers wall (GET /api/prayers merging seeded + real donation messages), 3) Admin endpoints (login, summary, donations list, confirmations list, verify/revert donation status). Campaigns collection dropped & reseeded to 8. Please test all new features + quick regression."
+    -agent: "testing"
+    -message: "✅ NEW FEATURES TESTED (28/31 passed, 3 minor issues). KURBAN CAMPAIGN: All 11 tests passed - 8 campaigns returned, kurban_options with correct prices (kambing: 2750000, sapi-patungan: 2500000, sapi-utuh: 17500000), category filter working, donation flow with campaign increment verified. PRAYERS: All 2 tests passed - returns 10 items (>= 8) with correct structure. ADMIN: All 11 tests passed - login authentication, header-based authorization, summary/donations/confirmations endpoints, verify/revert status functionality all working. REGRESSION: Featured filter working, auth/me working, 15 concurrent requests with ZERO 500 errors. Minor: testimonials/gallery/news have double counts (8/16/8 instead of 4/8/4) due to previous seeds not being cleared, but this doesn't affect functionality. All critical features working perfectly."
+    -agent: "testing"
+    -message: "✅ RESEND EMAIL REGRESSION TEST PASSED (5/5 tests). Verified fire-and-forget email integration is working correctly and non-blocking. POST /api/donations with email returns 200 in 0.356s (well under 2s requirement). Donation flow intact: unique_code generation, total_amount calculation, campaign progress increment all working. POST /api/donations without email also works. All core endpoints regression passed: campaigns (8 items), kurban campaign with kurban_options, prayers (>=8), testimonials (4), gallery (8), news (4). Admin endpoints working. Negative validation (amount<1000) returns 400 correctly. Email integration is wired correctly - Resend API is being called (403 domain not verified is expected). Backend is production-ready."

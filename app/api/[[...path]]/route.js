@@ -1,6 +1,9 @@
 import { MongoClient } from 'mongodb'
 import { v4 as uuidv4 } from 'uuid'
 import { NextResponse } from 'next/server'
+import { Resend } from 'resend'
+
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
 // ---------------- MongoDB ----------------
 let dbPromise
@@ -31,6 +34,53 @@ export async function OPTIONS() {
 
 const clean = (doc) => { if (!doc) return doc; const { _id, ...rest } = doc; return rest }
 const cleanArr = (arr) => arr.map(clean)
+
+// ---------------- Email (Resend) ----------------
+const ORG_LOGO = 'https://customer-assets-m6fa6gv7.emergentagent.net/job_8686a8aa-42c1-46ab-92c8-1ae6eb1872e2/artifacts/4k17zphv_logo%20yababerma.png'
+const BANK_LABELS = { bsi: 'Bank Syariah Indonesia (BSI)', mandiri: 'Bank Mandiri', bca: 'Bank BCA', bri: 'Bank BRI', kalsel: 'Bank Kalsel' }
+const rp = (n) => 'Rp ' + (Number(n) || 0).toLocaleString('id-ID')
+function escapeHtml(v = '') { return String(v).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c])) }
+
+async function sendDonationEmail(donation) {
+  if (!resend || !donation.donor_email) return
+  const name = escapeHtml(donation.is_anonymous ? 'Sahabat Donatur' : (donation.donor_name || 'Sahabat Donatur'))
+  const program = escapeHtml(donation.campaign_title || 'Donasi Umum')
+  const bank = escapeHtml(BANK_LABELS[donation.payment_method] || donation.payment_method || '-')
+  const html = `<!doctype html><html><body style="margin:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#1E293B">
+  <div style="max-width:560px;margin:0 auto;padding:24px">
+    <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
+      <div style="background:#00A651;padding:24px;text-align:center">
+        <img src="${ORG_LOGO}" width="64" height="64" style="background:#fff;border-radius:50%;padding:6px" alt="YABABERMA"/>
+        <h1 style="color:#ffffff;font-size:18px;margin:12px 0 0">Yayasan Banua Berkah Mandiri</h1>
+      </div>
+      <div style="padding:28px">
+        <h2 style="margin:0 0 6px;font-size:20px">Terima kasih, ${name}!</h2>
+        <p style="color:#475569;margin:0 0 20px;line-height:1.6">Jazaakumullahu khairan atas kebaikan Anda. Donasi Anda telah kami catat. Berikut rincian &amp; kuitansi donasi Anda.</p>
+        <div style="background:#e6f7ee;border-radius:12px;padding:16px;text-align:center;margin-bottom:16px">
+          <div style="font-size:12px;color:#475569">Total Transfer</div>
+          <div style="font-size:26px;font-weight:800;color:#00A651">${rp(donation.total_amount)}</div>
+          <div style="font-size:12px;color:#475569">termasuk kode unik <b>${donation.unique_code}</b></div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <tr><td style="padding:8px 0;color:#64748b">Program</td><td style="padding:8px 0;text-align:right;font-weight:600">${program}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Nominal Donasi</td><td style="padding:8px 0;text-align:right;font-weight:600">${rp(donation.amount)}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Kode Unik</td><td style="padding:8px 0;text-align:right;font-weight:600">${donation.unique_code}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Bank Tujuan</td><td style="padding:8px 0;text-align:right;font-weight:600">${bank}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">No. Referensi</td><td style="padding:8px 0;text-align:right;font-weight:600">${escapeHtml(donation.id)}</td></tr>
+        </table>
+        <div style="background:#e6f3fb;border-radius:12px;padding:14px;margin-top:16px;font-size:13px;color:#475569">Mohon selesaikan transfer tepat hingga 3 digit terakhir (kode unik) agar donasi mudah terverifikasi. Setelah transfer, konfirmasi via WhatsApp admin: <b>0858-2811-2032</b>.</div>
+        <p style="color:#94a3b8;font-size:12px;margin-top:20px;text-align:center">Semoga menjadi amal jariyah yang berkah. Aamiin.<br/>&copy; 2026 Yayasan Banua Berkah Mandiri</p>
+      </div>
+    </div>
+  </div>
+</body></html>`
+  const text = `Terima kasih, ${donation.donor_name}!\nDonasi Anda untuk ${donation.campaign_title} telah dicatat.\nTotal transfer: ${rp(donation.total_amount)} (kode unik ${donation.unique_code}).\nNo. Referensi: ${donation.id}\nSemoga menjadi amal jariyah yang berkah. - Yayasan Banua Berkah Mandiri`
+  try {
+    const { data, error } = await resend.emails.send({ from: process.env.MAIL_FROM, to: [donation.donor_email], subject: 'Terima kasih atas donasi Anda \u2014 YABABERMA', html, text })
+    if (error) console.error('Resend error:', error?.message || JSON.stringify(error))
+    else console.log('Resend sent id:', data?.id)
+  } catch (e) { console.error('Email exception:', e?.message) }
+}
 
 // ---------------- Seed data ----------------
 function daysFromNow(n) { return new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString() }
@@ -135,6 +185,25 @@ function seedCampaigns() {
       gallery: ['https://images.pexels.com/photos/36853519/pexels-photo-36853519.jpeg', 'https://images.pexels.com/photos/7345451/pexels-photo-7345451.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940'],
       updates: [ { date: daysFromNow(-6), title: 'Penyaluran Awal', text: 'Fidyah tersalur kepada 40 penerima.' } ],
     },
+    {
+      id: uuidv4(), slug: 'kurban-peduli-banua',
+      title: 'Kurban Peduli Banua', category: 'kurban',
+      short_desc: 'Tunaikan kurban Anda, dagingnya kami salurkan untuk yatim & dhuafa hingga pelosok Kalimantan.',
+      image: 'https://images.pexels.com/photos/6646926/pexels-photo-6646926.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940',
+      target_amount: 200000000, collected_amount: 45000000, donor_count: 120, deadline: daysFromNow(70), featured: false,
+      story: [
+        'Setiap tahun, banyak keluarga dhuafa di pelosok Kalimantan yang jarang menikmati daging. Melalui program Kurban Peduli Banua, hewan kurban Anda kami sembelih dan distribusikan tepat sasaran.',
+        'Anda dapat berkurban kambing/domba, atau patungan sapi (1/7 bagian) bersama keluarga. Seluruh proses dilaporkan lengkap dengan dokumentasi.',
+        'Sempurnakan ibadah kurban Anda, hadirkan kebahagiaan di wajah saudara kita di Banua.'
+      ],
+      gallery: ['https://images.pexels.com/photos/6646926/pexels-photo-6646926.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940', 'https://images.pexels.com/photos/7345447/pexels-photo-7345447.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940'],
+      updates: [ { date: daysFromNow(-7), title: 'Pendaftaran Dibuka', text: 'Pendaftaran pekurban tahun ini resmi dibuka.' } ],
+      kurban_options: [
+        { key: 'kambing', name: 'Kambing / Domba', emoji: '\uD83D\uDC10', desc: '1 ekor untuk 1 pekurban', price: 2750000, unit: 'ekor' },
+        { key: 'sapi-patungan', name: 'Sapi Patungan', emoji: '\uD83D\uDC04', desc: '1 dari 7 bagian (1/7 sapi)', price: 2500000, unit: 'bagian' },
+        { key: 'sapi-utuh', name: 'Sapi Utuh', emoji: '\uD83D\uDC04', desc: '1 ekor sapi (7 bagian sekaligus)', price: 17500000, unit: 'ekor' },
+      ],
+    },
   ]
 }
 
@@ -170,14 +239,27 @@ function seedGallery() {
   ]
 }
 
+function seedPrayers() {
+  const now = Date.now()
+  const mk = (name, message, program, i) => ({ id: uuidv4(), name, message, program, created_at: new Date(now - i * 3600000).toISOString() })
+  return [
+    mk('Hamba Allah', 'Semoga menjadi amal jariyah yang tak pernah terputus. Aamiin.', "Wakaf Al-Qur'an", 1),
+    mk('Ahmad R.', 'Ya Allah, mudahkanlah urusan para donatur dan penerima manfaat.', 'Panti Asuhan', 2),
+    mk('Fatimah', 'Semoga Allah membalas kebaikan Yayasan dengan surga-Nya.', 'Sembako Dhuafa', 3),
+    mk('Hamba Allah', 'Barakallahu fiikum, semoga Banua semakin berkah.', 'Zakat Maal', 4),
+    mk('Rizky P.', 'Semoga anak-anak panti tumbuh menjadi generasi Qur\u2019ani.', 'Beasiswa TPQ', 5),
+    mk('Hamba Allah', 'Sedikit dari kami, semoga besar manfaatnya. Aamiin.', 'Tanggap Bencana', 6),
+    mk('Nadia', 'Semoga rezeki kita semakin lapang dan berkah.', 'Sedekah', 7),
+    mk('Hamba Allah', 'Terima kasih sudah menjadi jembatan kebaikan kami.', "Wakaf Al-Qur'an", 8),
+  ]
+}
+
 async function ensureSeed(db) {
-  const count = await db.collection('campaigns').countDocuments()
-  if (count === 0) {
-    await db.collection('campaigns').insertMany(seedCampaigns())
-    await db.collection('news').insertMany(seedNews())
-    await db.collection('testimonials').insertMany(seedTestimonials())
-    await db.collection('gallery').insertMany(seedGallery())
-  }
+  if (await db.collection('campaigns').countDocuments() === 0) await db.collection('campaigns').insertMany(seedCampaigns())
+  if (await db.collection('news').countDocuments() === 0) await db.collection('news').insertMany(seedNews())
+  if (await db.collection('testimonials').countDocuments() === 0) await db.collection('testimonials').insertMany(seedTestimonials())
+  if (await db.collection('gallery').countDocuments() === 0) await db.collection('gallery').insertMany(seedGallery())
+  if (await db.collection('prayers').countDocuments() === 0) await db.collection('prayers').insertMany(seedPrayers())
 }
 
 // ---------------- Auth helpers ----------------
@@ -192,6 +274,11 @@ async function getUserFromRequest(request, db) {
   if (session.expires && new Date(session.expires).getTime() < Date.now()) return null
   const user = await db.collection('users').findOne({ id: session.user_id })
   return user ? clean(user) : null
+}
+
+function isAdmin(request) {
+  const key = request.headers.get('x-admin-key')
+  return !!key && key === process.env.ADMIN_KEY
 }
 
 // ---------------- Router ----------------
@@ -266,6 +353,10 @@ async function handleRoute(request, { params }) {
       if (campaign) {
         await db.collection('campaigns').updateOne({ slug: campaign.slug }, { $inc: { collected_amount: amount, donor_count: 1 } })
       }
+
+      // Send automatic thank-you + receipt email in the background (non-blocking)
+      sendDonationEmail(donation).catch(() => {})
+
       return handleCORS(NextResponse.json(donation))
     }
 
@@ -401,6 +492,52 @@ async function handleRoute(request, { params }) {
       if (Object.keys(update).length) await db.collection('users').updateOne({ id: user.id }, { $set: update })
       const dbUser = await db.collection('users').findOne({ id: user.id })
       return handleCORS(NextResponse.json({ ok: true, user: clean(dbUser) }))
+    }
+
+    // ---- Prayers (Dinding Doa) ----
+    if (route === '/prayers' && method === 'GET') {
+      const real = await db.collection('donations').find({ message: { $nin: [null, ''] } }).sort({ created_at: -1 }).limit(20).toArray()
+      const realMapped = real.map(d => ({ name: d.is_anonymous ? 'Hamba Allah' : (d.donor_name || 'Hamba Allah'), message: d.message, program: d.campaign_title || '' }))
+      const seeded = await db.collection('prayers').find({}).sort({ created_at: -1 }).toArray()
+      const seededMapped = seeded.map(p => ({ name: p.name, message: p.message, program: p.program }))
+      const all = [...realMapped, ...seededMapped].slice(0, 30)
+      return handleCORS(NextResponse.json(all))
+    }
+
+    // ---- Admin ----
+    if (route === '/admin/login' && method === 'POST') {
+      const body = await request.json()
+      if (!body.key || body.key !== process.env.ADMIN_KEY) return handleCORS(NextResponse.json({ error: 'Kunci admin salah' }, { status: 401 }))
+      return handleCORS(NextResponse.json({ ok: true }))
+    }
+
+    if (route.startsWith('/admin')) {
+      if (!isAdmin(request)) return handleCORS(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
+
+      if (route === '/admin/summary' && method === 'GET') {
+        const donations = await db.collection('donations').find({}).toArray()
+        const verified = donations.filter(d => d.status === 'verified')
+        const total_verified = verified.reduce((s, d) => s + (d.amount || 0), 0)
+        const total_all = donations.reduce((s, d) => s + (d.amount || 0), 0)
+        const confirmations = await db.collection('confirmations').countDocuments()
+        return handleCORS(NextResponse.json({ total_donations: donations.length, verified: verified.length, pending: donations.length - verified.length, total_verified, total_all, confirmations }))
+      }
+      if (route === '/admin/donations' && method === 'GET') {
+        const items = await db.collection('donations').find({}).sort({ created_at: -1 }).limit(500).toArray()
+        return handleCORS(NextResponse.json(cleanArr(items)))
+      }
+      if (route === '/admin/confirmations' && method === 'GET') {
+        const items = await db.collection('confirmations').find({}).sort({ created_at: -1 }).limit(500).toArray()
+        return handleCORS(NextResponse.json(cleanArr(items)))
+      }
+      if (route === '/admin/verify' && method === 'POST') {
+        const body = await request.json()
+        if (!body.donation_id) return handleCORS(NextResponse.json({ error: 'donation_id wajib' }, { status: 400 }))
+        const status = body.status === 'verified' ? 'verified' : 'pending'
+        await db.collection('donations').updateOne({ id: body.donation_id }, { $set: { status, verified_at: status === 'verified' ? new Date().toISOString() : null } })
+        const d = await db.collection('donations').findOne({ id: body.donation_id })
+        return handleCORS(NextResponse.json({ ok: true, donation: d ? clean(d) : null }))
+      }
     }
 
     return handleCORS(NextResponse.json({ error: `Route ${route} not found` }, { status: 404 }))

@@ -67,3 +67,14 @@ body {
   background-image: radial-gradient(rgba(0,166,81,0.12) 1.4px, transparent 1.4px);
   background-size: 22px 22px;
 }
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 45s linear infinite;
+}
+.marquee-pause:hover .animate-marquee {
+  animation-play-state: paused;
+}
