@@ -11,13 +11,13 @@ import { Card } from '@/components/ui/card';
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from '@/components/ui/carousel';
 import {
   Calculator, BookOpen, MessageCircleQuestion, ReceiptText, ArrowRight, Heart,
-  Play, Quote, Calendar, Clock, Mail, ShieldCheck, HeartHandshake, Loader2,
+  Play, Quote, Calendar, Clock, Mail, ShieldCheck, HeartHandshake, Loader2, FileBarChart,
 } from 'lucide-react';
 import CampaignCard from '@/components/site/campaign-card';
 import CountUp from '@/components/site/count-up';
 import PrayerWall from '@/components/site/prayer-wall';
 import { useApi } from '@/components/site/use-api';
-import { HERO_SLIDES, QUICK_SERVICES, IMPACT_STATS, ORG } from '@/lib/site-data';
+import { HERO_SLIDES, QUICK_SERVICES, IMPACT_STATS, ORG, SOCIALS } from '@/lib/site-data';
 
 const ICONS = { Calculator, BookOpen, MessageCircleQuestion, ReceiptText };
 
@@ -41,6 +41,7 @@ export default function App() {
   const { data: news } = useApi('/api/news');
   const { data: testimonials } = useApi('/api/testimonials');
   const { data: gallery } = useApi('/api/gallery');
+  const { data: stats } = useApi('/api/stats');
 
   useEffect(() => {
     const t = setInterval(() => setCurrent((c) => (c + 1) % HERO_SLIDES.length), 6000);
@@ -130,6 +131,18 @@ export default function App() {
             <h2 className="text-2xl md:text-4xl font-extrabold">Jejak Kebaikan Bersama Anda</h2>
             <p className="text-white/80 mt-3">Setiap angka adalah senyuman, harapan, dan doa yang tersalurkan.</p>
           </div>
+
+          <div className="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto mb-12">
+            <div className="rounded-2xl bg-white/10 p-6 text-center">
+              <p className="text-white/80 text-sm">Total Dana Terkumpul</p>
+              <div className="text-3xl md:text-4xl font-extrabold font-heading mt-1"><CountUp end={stats?.total_collected || 0} prefix="Rp " /></div>
+            </div>
+            <div className="rounded-2xl bg-white/10 p-6 text-center">
+              <p className="text-white/80 text-sm">Total Donatur</p>
+              <div className="text-3xl md:text-4xl font-extrabold font-heading mt-1"><CountUp end={stats?.total_donors || 0} suffix="+" /></div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {IMPACT_STATS.map((s, i) => (
               <div key={i} className="text-center">
@@ -137,6 +150,10 @@ export default function App() {
                 <p className="text-white/80 text-sm mt-2">{s.label}</p>
               </div>
             ))}
+          </div>
+
+          <div className="text-center mt-12">
+            <Link href="/laporan"><Button variant="secondary" className="rounded-xl bg-white text-brand-green hover:bg-white/90"><FileBarChart className="w-4 h-4 mr-2" />Lihat Laporan Publik</Button></Link>
           </div>
         </div>
       </section>
@@ -201,21 +218,15 @@ export default function App() {
       <section className="container py-16 md:py-20">
         <SectionHeading eyebrow="Galeri Kami" title="Dokumentasi Kegiatan" center />
         <div className="grid lg:grid-cols-2 gap-6 mt-10 items-start">
-          <div className="rounded-2xl overflow-hidden shadow-card relative aspect-video bg-brand-ink">
-            {playing ? (
-              <iframe className="w-full h-full" src="https://www.youtube.com/embed/jNQXAC9IVRw?autoplay=1" title="Video Yayasan" allow="accelerator; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
-            ) : (
-              <button onClick={() => setPlaying(true)} className="group w-full h-full relative">
-                <img src="https://images.unsplash.com/photo-1589995635011-078e0bb91d11" alt="Video" className="w-full h-full object-cover opacity-80" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Play className="w-7 h-7 text-brand-green ml-1" fill="currentColor" />
-                  </span>
-                </div>
-                <span className="absolute bottom-4 left-4 text-white font-semibold text-sm bg-black/40 px-3 py-1 rounded-full">Profil Yayasan Banua Berkah Mandiri</span>
-              </button>
-            )}
-          </div>
+          <a href={SOCIALS.youtube} target="_blank" rel="noopener noreferrer" className="rounded-2xl overflow-hidden shadow-card relative aspect-video bg-brand-ink group block">
+            <img src="https://images.unsplash.com/photo-1589995635011-078e0bb91d11" alt="Video Yayasan" className="w-full h-full object-cover opacity-80 group-hover:opacity-90 transition" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Play className="w-7 h-7 text-brand-green ml-1" fill="currentColor" />
+              </span>
+            </div>
+            <span className="absolute bottom-4 left-4 text-white font-semibold text-sm bg-black/50 px-3 py-1 rounded-full">Kunjungi Kanal YouTube Kami</span>
+          </a>
           <div className="grid grid-cols-3 gap-3">
             {(gallery || []).slice(0, 6).map((g) => (
               <div key={g.id} className="aspect-square rounded-xl overflow-hidden group relative">

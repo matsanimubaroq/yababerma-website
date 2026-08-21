@@ -8,9 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Check, Copy, Loader2, ArrowLeft, Heart, ShieldCheck, MessageCircle, PartyPopper, Award } from 'lucide-react';
+import { Check, Copy, Loader2, ArrowLeft, Heart, ShieldCheck, MessageCircle, PartyPopper, Award, BookOpen } from 'lucide-react';
 import { BANKS, WHATSAPP_ADMIN, formatRupiah, waLink, donationWaMessage } from '@/lib/site-data';
-import { isKurbanDonation, downloadKurbanCertificate } from '@/lib/receipts';
+import { isKurbanDonation, downloadKurbanCertificate, isWakafDonation, downloadWakafCertificate } from '@/lib/receipts';
 
 const QUICK = [10000, 50000, 100000, 250000, 500000, 1000000];
 
@@ -174,6 +174,9 @@ export function DonationDialog({ open, setOpen, campaign, presetAmount, presetTy
               </a>
               {isKurbanDonation(result) && (
                 <Button variant="outline" onClick={() => downloadKurbanCertificate(result)} className="w-full rounded-xl border-brand-green text-brand-green hover:bg-brand-greenlight"><Award className="w-4 h-4 mr-2" />Unduh Sertifikat Kurban</Button>
+              )}
+              {!isKurbanDonation(result) && isWakafDonation(result) && (
+                <Button variant="outline" onClick={() => downloadWakafCertificate(result)} className="w-full rounded-xl border-brand-blue text-brand-blue hover:bg-brand-bluelight"><BookOpen className="w-4 h-4 mr-2" />Unduh Sertifikat Wakaf</Button>
               )}
               <button className="w-full text-center text-sm text-muted-foreground hover:text-brand-ink" onClick={() => setOpen(false)}>Nanti saja, tutup</button>
             </div>

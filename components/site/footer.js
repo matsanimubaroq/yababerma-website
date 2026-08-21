@@ -1,8 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { Instagram, Facebook, Youtube, MapPin, Mail, Phone, ShieldCheck } from 'lucide-react';
+import { Instagram, Facebook, Youtube, MapPin, Mail, Phone, ShieldCheck, FileBarChart } from 'lucide-react';
 import { ORG, NAV_ITEMS, SOCIALS } from '@/lib/site-data';
+
+function TikTokIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden="true">
+      <path d="M16.5 3c.3 2 1.5 3.4 3.5 3.7v2.4c-1.3 0-2.5-.3-3.5-.9v6.2c0 3.2-2.4 5.6-5.6 5.6S5.3 19.6 5.3 16.4c0-3 2.2-5.3 5.1-5.5v2.5c-1.5.2-2.6 1.4-2.6 2.9 0 1.6 1.3 2.9 2.9 2.9s2.9-1.3 2.9-2.9V3h2.9z"/>
+    </svg>
+  );
+}
+
+function SocialLink({ href, label, children }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" aria-label={label} title={label} className="w-9 h-9 rounded-lg bg-white/10 hover:bg-brand-green flex items-center justify-center transition text-white">
+      {children}
+    </a>
+  );
+}
 
 export default function Footer() {
   return (
@@ -17,11 +33,12 @@ export default function Footer() {
             </div>
           </div>
           <p className="text-sm mt-4 text-slate-400">{ORG.tagline}. Lembaga filantropi Islam &amp; kemanusiaan yang amanah di Banjarmasin.</p>
-          <div className="flex gap-2 mt-5">
-            {[{i:Instagram,h:SOCIALS.instagram},{i:Facebook,h:SOCIALS.facebook},{i:Youtube,h:SOCIALS.youtube}].map((s,idx)=>{
-              const Icon = s.i;
-              return <a key={idx} href={s.h} target="_blank" rel="noopener noreferrer" className="w-9 h-9 rounded-lg bg-white/10 hover:bg-brand-green flex items-center justify-center transition"><Icon className="w-4 h-4 text-white" /></a>;
-            })}
+          <div className="flex gap-2 mt-5 flex-wrap">
+            <SocialLink href={SOCIALS.instagram} label="Instagram YABABERMA"><Instagram className="w-4 h-4" /></SocialLink>
+            <SocialLink href={SOCIALS.instagram_panti} label="Instagram Panti Asuhan"><Instagram className="w-4 h-4" /></SocialLink>
+            <SocialLink href={SOCIALS.tiktok} label="TikTok"><TikTokIcon /></SocialLink>
+            <SocialLink href={SOCIALS.youtube} label="YouTube"><Youtube className="w-4 h-4" /></SocialLink>
+            <SocialLink href={SOCIALS.facebook} label="Facebook"><Facebook className="w-4 h-4" /></SocialLink>
           </div>
         </div>
 
@@ -29,6 +46,7 @@ export default function Footer() {
           <h4 className="text-white font-semibold mb-4">Navigasi</h4>
           <ul className="space-y-2.5 text-sm">
             {NAV_ITEMS.map((n) => (<li key={n.href}><Link href={n.href} className="text-slate-400 hover:text-brand-green transition">{n.label}</Link></li>))}
+            <li><Link href="/laporan" className="text-slate-400 hover:text-brand-green transition inline-flex items-center gap-1.5"><FileBarChart className="w-3.5 h-3.5" />Laporan Publik</Link></li>
           </ul>
         </div>
 
@@ -38,7 +56,7 @@ export default function Footer() {
             <li><Link href="/donasi/operasional-panti-asuhan-banua-berkah" className="hover:text-brand-green">Panti Asuhan Banua Berkah</Link></li>
             <li><Link href="/donasi/wakaf-al-quran-santri-pelosok" className="hover:text-brand-green">Wakaf Al-Qur'an Pelosok</Link></li>
             <li><Link href="/donasi/beasiswa-santri-tpq-banua-berkah" className="hover:text-brand-green">Beasiswa TPQ</Link></li>
-            <li><Link href="/donasi/paket-sembako-dhuafa-banjarmasin" className="hover:text-brand-green">Bantuan Dhuafa</Link></li>
+            <li><Link href="/kurban" className="hover:text-brand-green">Kurban Peduli Banua</Link></li>
           </ul>
         </div>
 

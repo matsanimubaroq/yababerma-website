@@ -470,10 +470,12 @@ async function handleRoute(request, { params }) {
     if (route === '/stats' && method === 'GET') {
       const campaigns = await db.collection('campaigns').find({}).toArray()
       const total_collected = campaigns.reduce((s, c) => s + (c.collected_amount || 0), 0)
+      const total_donors = campaigns.reduce((s, c) => s + (c.donor_count || 0), 0)
+      const total_target = campaigns.reduce((s, c) => s + (c.target_amount || 0), 0)
       const total_donations = await db.collection('donations').countDocuments()
       return handleCORS(NextResponse.json({
         humanitarian: 3000, wakaf_quran: 2100, panti: 500, pemberdayaan: 200,
-        total_collected, total_donations, active_campaigns: campaigns.length,
+        total_collected, total_donors, total_target, total_donations, active_campaigns: campaigns.length,
       }))
     }
 
