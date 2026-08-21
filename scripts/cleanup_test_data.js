@@ -39,6 +39,10 @@ const KURBAN_OPTIONS = [
   await db.collection('donations').deleteMany({});
   console.log('Deleted donations:', delCount);
 
+  const confCount = await db.collection('confirmations').countDocuments();
+  await db.collection('confirmations').deleteMany({});
+  console.log('Deleted confirmations:', confCount);
+
   for (const [slug, v] of Object.entries(SEED)) {
     await db.collection('campaigns').updateOne({ slug }, { $set: v });
   }

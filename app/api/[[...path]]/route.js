@@ -468,8 +468,8 @@ async function handleRoute(request, { params }) {
         await db.collection('campaigns').updateOne({ slug: campaign.slug }, { $inc: { collected_amount: amount, donor_count: 1 } })
       }
 
-      // Send automatic thank-you + receipt email + admin notification (background, non-blocking)
-      sendDonationEmail(donation).catch(() => {})
+      // Thank-you email is sent ONLY after admin verification (per config).
+      // On creation we only notify the admin (background, non-blocking).
       sendAdminNotifyEmail(donation).catch(() => {})
 
       return handleCORS(NextResponse.json(donation))
@@ -717,6 +717,27 @@ async function handleRoute(request, { params }) {
         const d = await db.collection('donations').findOne({ id: body.donation_id })
         if (d && status === 'verified') sendVerifiedEmail(clean(d)).catch(() => {})
         return handleCORS(NextResponse.json({ ok: true, donation: d ? clean(d) : null }))
+      }
+
+      // Bulk delete (admin) — donations or confirmations
+      if (route === '/admin/delete' && method === 'POST') {
+        const body = await request.json()
+        const coll = body.collection === 'confirmations' ? 'confirmations' : 'donations'
+        const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : []
+        if (ids.length === 0) return handleCORS(NextResponse.json({ error: 'ids wajib berupa array tidak kosong' }, { status: 400 }))
+        let reverted = 0
+        if (coll === 'donations') {
+          // Best-effort: roll back campaign progress for each deleted donation
+          const toDelete = await db.collection('donations').find({ id: { $in: ids } }).limit(1000).toArray()
+          for (const d of toDelete) {
+            if (d.campaign_slug && d.amount) {
+              await db.collection('campaigns').updateOne({ slug: d.campaign_slug }, { $inc: { collected_amount: -Math.abs(d.amount), donor_count: -1 } })
+              reverted++
+            }
+          }
+        }
+        const res = await db.collection(coll).deleteMany({ id: { $in: ids } })
+        return handleCORS(NextResponse.json({ ok: true, deleted: res.deletedCount || 0, reverted }))
       }
 
       // Kurban quota management (admin)
