@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatRupiah, daysLeft, CATEGORY_LABEL } from '@/lib/site-data';
-import { Users, Clock, Target, ArrowLeft, HeartHandshake, MessageSquareQuote, History, PieChart, ShieldCheck } from 'lucide-react';
+import { Users, Clock, Target, ArrowLeft, HeartHandshake, MessageSquareQuote, History, PieChart, ShieldCheck, Play, Download } from 'lucide-react';
 
 const ALLOC_DEFAULT = {
   zakat: [['Penyaluran untuk 8 asnaf', 85], ['Hak amil', 10], ['Operasional program', 5]],
@@ -23,6 +23,12 @@ const ALLOC_DEFAULT = {
 function allocationFor(c) {
   if (c && Array.isArray(c.allocation) && c.allocation.length) return c.allocation.map((a) => [a.label, a.percent]);
   return ALLOC_DEFAULT[c && c.category] || ALLOC_DEFAULT.sedekah;
+}
+
+function ytEmbed(url) {
+  if (!url) return null;
+  const m = String(url).match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/))([A-Za-z0-9_-]{6,})/);
+  return m ? `https://www.youtube.com/embed/${m[1]}` : null;
 }
 
 export default function CampaignDetailPage() {
@@ -84,6 +90,16 @@ export default function CampaignDetailPage() {
               </div>
             </Card>
 
+            {/* VIDEO */}
+            {ytEmbed(c.video_url) && (
+              <Card className="rounded-2xl p-6 border-border bg-white">
+                <h2 className="font-heading font-bold text-lg text-brand-ink flex items-center gap-2 mb-4"><Play className="w-5 h-5 text-brand-green" />Video Penjelasan Program</h2>
+                <div className="aspect-video rounded-xl overflow-hidden bg-brand-ink">
+                  <iframe src={ytEmbed(c.video_url)} title={c.title} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+                </div>
+              </Card>
+            )}
+
             {/* LAPORAN PENYALURAN */}
             <Card className="rounded-2xl p-6 border-border bg-white">
               <h2 className="font-heading font-bold text-lg text-brand-ink flex items-center gap-2 mb-1"><PieChart className="w-5 h-5 text-brand-blue" />Laporan Penyaluran Dana</h2>
@@ -100,6 +116,29 @@ export default function CampaignDetailPage() {
                 <ShieldCheck className="w-4 h-4 text-brand-blue shrink-0 mt-0.5" />
                 Laporan lengkap &amp; dokumentasi penyaluran dikirimkan berkala kepada para donatur. InsyaAllah amanah.
               </div>
+
+              {Array.isArray(c.reports) && c.reports.length > 0 && (
+                <div className="mt-5 space-y-3">
+                  <h3 className="font-semibold text-sm text-brand-ink">Dokumentasi &amp; LPJ Kegiatan</h3>
+                  {c.reports.map((rp, i) => (
+                    <div key={i} className="rounded-xl border border-border p-3">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div>
+                          <p className="font-semibold text-sm text-brand-ink">{rp.title || 'Laporan Penyaluran'}</p>
+                          {rp.date && <p className="text-xs text-muted-foreground">{new Date(rp.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}
+                        </div>
+                        {rp.pdf_url && (
+                          <a href={rp.pdf_url} target="_blank" rel="noopener noreferrer">
+                            <Button size="sm" variant="outline" className="rounded-lg border-brand-blue text-brand-blue hover:bg-brand-bluelight"><Download className="w-4 h-4 mr-1.5" />Unduh LPJ (PDF)</Button>
+                          </a>
+                        )}
+                      </div>
+                      {rp.note && <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{rp.note}</p>}
+                      {rp.photo_url && <img src={rp.photo_url} alt={rp.title || 'dokumentasi'} className="w-full rounded-lg mt-3 object-cover max-h-80" />}
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
 
             {/* GALLERY */}

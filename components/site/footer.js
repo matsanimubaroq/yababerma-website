@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Instagram, Facebook, Youtube, MapPin, Mail, Phone, ShieldCheck, FileBarChart } from 'lucide-react';
 import { ORG, NAV_ITEMS, SOCIALS, WHATSAPP_ADMIN, WA_INQUIRY_MESSAGE, waLink } from '@/lib/site-data';
 
@@ -29,6 +30,9 @@ function SocialLink({ href, label, className = 'bg-white/10 hover:bg-brand-green
 }
 
 export default function Footer() {
+  const pathname = usePathname();
+  // Hide footer on the admin panel (WordPress-like clean admin area)
+  if (pathname && pathname.startsWith('/admin')) return null;
   return (
     <footer className="bg-brand-ink text-slate-300">
       <div className="container py-14 grid gap-10 md:grid-cols-4">

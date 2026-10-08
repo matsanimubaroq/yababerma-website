@@ -35,6 +35,15 @@ export async function OPTIONS() {
 const clean = (doc) => { if (!doc) return doc; const { _id, ...rest } = doc; return rest }
 const cleanArr = (arr) => arr.map(clean)
 
+function slugify(s) {
+  return String(s || '').toLowerCase().trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80)
+}
+
 // ---------------- Email (Resend) ----------------
 const ORG_LOGO = 'https://customer-assets-m6fa6gv7.emergentagent.net/job_8686a8aa-42c1-46ab-92c8-1ae6eb1872e2/artifacts/4k17zphv_logo%20yababerma.png'
 const BANK_LABELS = { bsi: 'Bank Syariah Indonesia (BSI)', mandiri: 'Bank Mandiri', bca: 'Bank BCA', bri: 'Bank BRI', kalsel: 'Bank Kalsel' }
@@ -506,16 +515,32 @@ async function handleRoute(request, { params }) {
       const url = new URL(request.url)
       const category = url.searchParams.get('category')
       const featured = url.searchParams.get('featured')
-      const q = {}
+      const q = { published: { $ne: false } }
       if (category && category !== 'semua') q.category = category
       if (featured === 'true') q.featured = true
       const items = await db.collection('campaigns').find(q).limit(200).toArray()
       return handleCORS(NextResponse.json(cleanArr(items)))
     }
 
+    // ---- Media (serve uploaded files from DB) ----
+    if (path[0] === 'media' && path[1] && method === 'GET') {
+      const m = await db.collection('media').findOne({ id: path[1] })
+      if (!m || !m.data) return handleCORS(NextResponse.json({ error: 'Not found' }, { status: 404 }))
+      const raw = m.data.buffer ? m.data.buffer : m.data
+      const buf = Buffer.from(raw)
+      const res = new NextResponse(buf, { status: 200, headers: {
+        'Content-Type': m.content_type || 'application/octet-stream',
+        'Content-Disposition': `inline; filename="${(m.filename || 'file').replace(/"/g, '')}"`,
+        'Content-Length': String(buf.length),
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      } })
+      return handleCORS(res)
+    }
+
     if (path[0] === 'campaigns' && path[1] && method === 'GET') {
       const item = await db.collection('campaigns').findOne({ slug: path[1] })
       if (!item) return handleCORS(NextResponse.json({ error: 'Campaign not found' }, { status: 404 }))
+      if (item.published === false) return handleCORS(NextResponse.json({ error: 'Campaign not found' }, { status: 404 }))
       // recent public donations for this campaign
       const donations = await db.collection('donations').find({ campaign_slug: path[1] }).sort({ created_at: -1 }).limit(10).toArray()
       const recent = donations.map(d => ({ name: d.is_anonymous ? 'Hamba Allah' : d.donor_name, amount: d.amount, message: d.message || '', created_at: d.created_at }))
@@ -558,10 +583,8 @@ async function handleRoute(request, { params }) {
       }
       await db.collection('donations').insertOne({ ...donation })
 
-      // Optimistically reflect impact on campaign progress (demo behaviour)
-      if (campaign) {
-        await db.collection('campaigns').updateOne({ slug: campaign.slug }, { $inc: { collected_amount: amount, donor_count: 1 } })
-      }
+      // Campaign progress numbers (collected_amount & donor_count) are now MANAGED MANUALLY
+      // by admin via the panel (per configuration). New donations no longer auto-increment them.
 
       // Thank-you email is sent ONLY after admin verification (per config).
       // On creation we only notify the admin (background, non-blocking).
@@ -917,19 +940,9 @@ async function handleRoute(request, { params }) {
         const coll = body.collection === 'confirmations' ? 'confirmations' : 'donations'
         const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : []
         if (ids.length === 0) return handleCORS(NextResponse.json({ error: 'ids wajib berupa array tidak kosong' }, { status: 400 }))
-        let reverted = 0
-        if (coll === 'donations') {
-          // Best-effort: roll back campaign progress for each deleted donation
-          const toDelete = await db.collection('donations').find({ id: { $in: ids } }).limit(1000).toArray()
-          for (const d of toDelete) {
-            if (d.campaign_slug && d.amount) {
-              await db.collection('campaigns').updateOne({ slug: d.campaign_slug }, { $inc: { collected_amount: -Math.abs(d.amount), donor_count: -1 } })
-              reverted++
-            }
-          }
-        }
+        // Campaign numbers are managed manually; deleting a donation does NOT change campaign totals.
         const res = await db.collection(coll).deleteMany({ id: { $in: ids } })
-        return handleCORS(NextResponse.json({ ok: true, deleted: res.deletedCount || 0, reverted }))
+        return handleCORS(NextResponse.json({ ok: true, deleted: res.deletedCount || 0, reverted: 0 }))
       }
 
       // Kurban quota management (admin)
@@ -954,6 +967,81 @@ async function handleRoute(request, { params }) {
         })
         await db.collection('campaigns').updateOne({ slug: 'kurban-peduli-banua' }, { $set: { kurban_options: merged } })
         return handleCORS(NextResponse.json({ ok: true, options: merged.map(o => ({ key: o.key, name: o.name, unit: o.unit, price: o.price, quota: o.quota || 0, sold_base: o.sold_base || 0 })) }))
+      }
+
+      // ---- Media upload (stored in DB; served via GET /api/media/{id}) ----
+      if (route === '/admin/upload' && method === 'POST') {
+        const form = await request.formData()
+        const file = form.get('file')
+        if (!file || typeof file === 'string') return handleCORS(NextResponse.json({ error: 'File tidak ditemukan' }, { status: 400 }))
+        const MAX = 10 * 1024 * 1024
+        if (file.size > MAX) return handleCORS(NextResponse.json({ error: 'Ukuran file terlalu besar (maksimal 10MB).' }, { status: 400 }))
+        const buffer = Buffer.from(await file.arrayBuffer())
+        const id = uuidv4()
+        const doc = { id, filename: file.name || 'file', content_type: file.type || 'application/octet-stream', size: buffer.length, data: buffer, created_at: new Date().toISOString() }
+        await db.collection('media').insertOne(doc)
+        return handleCORS(NextResponse.json({ ok: true, id, url: `/api/media/${id}`, filename: doc.filename, content_type: doc.content_type, size: doc.size }))
+      }
+
+      // ---- Program/Campaign CMS ----
+      if (route === '/admin/campaigns' && method === 'GET') {
+        const items = await db.collection('campaigns').find({}).sort({ created_at: -1 }).limit(500).toArray()
+        return handleCORS(NextResponse.json(cleanArr(items)))
+      }
+      if (route === '/admin/campaigns' && method === 'POST') {
+        const body = await request.json()
+        const title = String(body.title || '').trim()
+        if (!title) return handleCORS(NextResponse.json({ error: 'Nama program wajib diisi.' }, { status: 400 }))
+        let base = slugify(title) || ('program-' + Date.now())
+        let slug = base, n = 1
+        while (await db.collection('campaigns').findOne({ slug })) { slug = `${base}-${++n}` }
+        const toArr = (v) => Array.isArray(v) ? v : (v ? String(v).split('\n').map(x => x.trim()).filter(Boolean) : [])
+        const doc = {
+          id: uuidv4(), slug, title,
+          category: body.category || 'sedekah',
+          short_desc: body.short_desc || '',
+          image: body.image || '',
+          story: toArr(body.story),
+          gallery: Array.isArray(body.gallery) ? body.gallery.filter(Boolean) : [],
+          updates: Array.isArray(body.updates) ? body.updates : [],
+          reports: Array.isArray(body.reports) ? body.reports : [],
+          video_url: body.video_url || '',
+          target_amount: Number(body.target_amount) || 0,
+          collected_amount: Number(body.collected_amount) || 0,
+          donor_count: Number(body.donor_count) || 0,
+          deadline: body.deadline || null,
+          featured: !!body.featured,
+          published: body.published === undefined ? false : !!body.published,
+          created_at: new Date().toISOString(),
+        }
+        await db.collection('campaigns').insertOne({ ...doc })
+        return handleCORS(NextResponse.json(clean(doc)))
+      }
+      if (path[0] === 'admin' && path[1] === 'campaigns' && path[2] && method === 'PUT') {
+        const id = path[2]
+        const body = await request.json()
+        const existing = await db.collection('campaigns').findOne({ id })
+        if (!existing) return handleCORS(NextResponse.json({ error: 'Program tidak ditemukan' }, { status: 404 }))
+        const toArr = (v) => Array.isArray(v) ? v : (v ? String(v).split('\n').map(x => x.trim()).filter(Boolean) : [])
+        const update = { updated_at: new Date().toISOString() }
+        const strFields = ['category', 'short_desc', 'image', 'video_url']
+        for (const k of strFields) if (k in body) update[k] = body[k] || ''
+        if ('title' in body) update.title = String(body.title).trim() || existing.title
+        if ('story' in body) update.story = toArr(body.story)
+        if ('gallery' in body) update.gallery = Array.isArray(body.gallery) ? body.gallery.filter(Boolean) : []
+        if ('updates' in body) update.updates = Array.isArray(body.updates) ? body.updates : []
+        if ('reports' in body) update.reports = Array.isArray(body.reports) ? body.reports : []
+        for (const k of ['target_amount', 'collected_amount', 'donor_count']) if (k in body) update[k] = Number(body[k]) || 0
+        if ('deadline' in body) update.deadline = body.deadline || null
+        if ('featured' in body) update.featured = !!body.featured
+        if ('published' in body) update.published = !!body.published
+        await db.collection('campaigns').updateOne({ id }, { $set: update })
+        const d = await db.collection('campaigns').findOne({ id })
+        return handleCORS(NextResponse.json(clean(d)))
+      }
+      if (path[0] === 'admin' && path[1] === 'campaigns' && path[2] && method === 'DELETE') {
+        const r = await db.collection('campaigns').deleteOne({ id: path[2] })
+        return handleCORS(NextResponse.json({ ok: true, deleted: r.deletedCount || 0 }))
       }
     }
 

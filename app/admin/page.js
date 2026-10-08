@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { formatRupiah } from '@/lib/site-data';
+import CampaignManager from '@/components/admin/campaign-manager';
 import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint, Search, Trash2, LayoutGrid, List as ListIcon, BarChart3, ImageDown, SlidersHorizontal, Eye, EyeOff, Mail, ArrowLeft, KeyRound, MessageSquare, Bell, Send } from 'lucide-react';
 
 const CHART_COLORS = ['#00A651', '#0082C8', '#F59E0B', '#8B5CF6', '#EF4444', '#14B8A6', '#EC4899', '#64748B'];
@@ -63,6 +64,7 @@ export default function AdminPage() {
   const [selDon, setSelDon] = useState([]);
   const [selConf, setSelConf] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [tab, setTab] = useState('donasi');
 
   const loadAll = useCallback(async (k) => {
     const h = { 'x-admin-key': k };
@@ -352,6 +354,20 @@ export default function AdminPage() {
     { label: 'Dana Terverifikasi', value: summary ? formatRupiah(summary.total_verified) : 'Rp 0', icon: Wallet, color: 'text-brand-green bg-brand-greenlight', small: true },
   ];
 
+  const NAV_GROUPS = [
+    { label: 'Transaksi', items: [
+      { value: 'donasi', label: 'Donasi', icon: Wallet, badge: donations.length },
+      { value: 'konfirmasi', label: 'Konfirmasi Transfer', icon: FileCheck2, badge: confs.length },
+    ] },
+    { label: 'Konten Website', items: [
+      { value: 'program', label: 'Program & Donasi', icon: LayoutGrid },
+    ] },
+    { label: 'Pengaturan', items: [
+      { value: 'kurban', label: 'Kuota Kurban', icon: PawPrint },
+      { value: 'wa', label: 'Pengaturan WA', icon: MessageSquare },
+    ] },
+  ];
+
   return (
     <div className="bg-brand-slatebg/40 min-h-screen">
       <div className="container py-8 md:py-12 space-y-6">
@@ -407,15 +423,30 @@ export default function AdminPage() {
           })}
         </div>
 
-        <Tabs defaultValue="donasi">
-          <TabsList className="rounded-xl">
-            <TabsTrigger value="donasi" className="rounded-lg data-[state=active]:bg-brand-green data-[state=active]:text-white">Donasi ({donations.length})</TabsTrigger>
-            <TabsTrigger value="konfirmasi" className="rounded-lg data-[state=active]:bg-brand-green data-[state=active]:text-white">Konfirmasi Transfer ({confs.length})</TabsTrigger>
-            <TabsTrigger value="kurban" className="rounded-lg data-[state=active]:bg-brand-green data-[state=active]:text-white">Kuota Kurban</TabsTrigger>
-            <TabsTrigger value="wa" className="rounded-lg data-[state=active]:bg-brand-green data-[state=active]:text-white">Pengaturan WA</TabsTrigger>
-          </TabsList>
+        <Tabs value={tab} onValueChange={setTab} className="flex flex-col lg:flex-row gap-6 items-start">
+          <nav className="w-full lg:w-60 shrink-0 bg-white rounded-2xl border border-border p-3 lg:sticky lg:top-6 space-y-4">
+            {NAV_GROUPS.map((grp) => (
+              <div key={grp.label}>
+                <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">{grp.label}</p>
+                <div className="space-y-1">
+                  {grp.items.map((it) => {
+                    const Icon = it.icon;
+                    const active = tab === it.value;
+                    return (
+                      <button key={it.value} onClick={() => setTab(it.value)} className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition ${active ? 'bg-brand-green text-white shadow-sm' : 'text-brand-ink hover:bg-muted'}`}>
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span className="flex-1 text-left">{it.label}</span>
+                        {it.badge != null && <span className={`text-xs ${active ? 'text-white/80' : 'text-muted-foreground'}`}>{it.badge}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </nav>
 
-          <TabsContent value="donasi" className="mt-4 space-y-4">
+          <div className="flex-1 min-w-0 w-full">
+          <TabsContent value="donasi" className="mt-0 space-y-4">
             <Card className="rounded-2xl border-border bg-white p-4">
               <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -771,6 +802,11 @@ export default function AdminPage() {
               </div>
             </Card>
           </TabsContent>
+
+          <TabsContent value="program" className="mt-0">
+            <CampaignManager adminKey={key} />
+          </TabsContent>
+          </div>
         </Tabs>
       </div>
     </div>
