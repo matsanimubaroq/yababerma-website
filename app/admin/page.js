@@ -17,6 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { formatRupiah } from '@/lib/site-data';
 import CampaignManager from '@/components/admin/campaign-manager';
+import SliderManager from '@/components/admin/slider-manager';
 import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint, Search, Trash2, LayoutGrid, List as ListIcon, BarChart3, ImageDown, SlidersHorizontal, Eye, EyeOff, Mail, ArrowLeft, KeyRound, MessageSquare, Bell, Send } from 'lucide-react';
 
 const CHART_COLORS = ['#00A651', '#0082C8', '#F59E0B', '#8B5CF6', '#EF4444', '#14B8A6', '#EC4899', '#64748B'];
@@ -360,6 +361,7 @@ export default function AdminPage() {
       { value: 'konfirmasi', label: 'Konfirmasi Transfer', icon: FileCheck2, badge: confs.length },
     ] },
     { label: 'Konten Website', items: [
+      { value: 'slider', label: 'Slider Beranda', icon: SlidersHorizontal },
       { value: 'program', label: 'Program & Donasi', icon: LayoutGrid },
     ] },
     { label: 'Pengaturan', items: [
@@ -805,6 +807,10 @@ export default function AdminPage() {
 
           <TabsContent value="program" className="mt-0">
             <CampaignManager adminKey={key} />
+          </TabsContent>
+
+          <TabsContent value="slider" className="mt-0">
+            <SliderManager adminKey={key} />
           </TabsContent>
           </div>
         </Tabs>

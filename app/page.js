@@ -43,11 +43,19 @@ export default function App() {
   const { data: testimonials } = useApi('/api/testimonials');
   const { data: gallery } = useApi('/api/gallery');
   const { data: stats } = useApi('/api/stats');
+  const { data: homeCfg } = useApi('/api/home-settings');
+
+  const cfgSlides = (homeCfg?.slides && homeCfg.slides.length)
+    ? homeCfg.slides
+    : HERO_SLIDES.map((s) => ({ ...s, link: `/donasi/${s.slug}` }));
+  const slideDuration = Number(homeCfg?.duration_ms) > 0 ? Number(homeCfg.duration_ms) : 6000;
+  const slideCount = cfgSlides.length;
 
   useEffect(() => {
-    const t = setInterval(() => setCurrent((c) => (c + 1) % HERO_SLIDES.length), 6000);
+    if (slideCount <= 1) return;
+    const t = setInterval(() => setCurrent((c) => (c + 1) % slideCount), slideDuration);
     return () => clearInterval(t);
-  }, []);
+  }, [slideCount, slideDuration]);
 
   const subscribe = async () => {
     if (!email.includes('@')) return toast.error('Masukkan alamat email yang valid');
@@ -61,7 +69,7 @@ export default function App() {
     finally { setSubLoading(false); }
   };
 
-  const slide = HERO_SLIDES[current];
+  const slide = cfgSlides[current % slideCount] || cfgSlides[0];
 
   return (
     <div>
@@ -80,14 +88,14 @@ export default function App() {
             <h1 className="text-3xl md:text-5xl font-extrabold leading-tight drop-shadow-sm">{slide.title}</h1>
             <p className="mt-4 text-white/90 text-base md:text-lg max-w-lg">{slide.subtitle}</p>
             <div className="flex flex-wrap gap-3 mt-7">
-              <Link href={`/donasi/${slide.slug}`}><Button size="lg" className="rounded-xl h-12 px-7 text-base"><Heart className="w-5 h-5 mr-2" />Donasi Sekarang</Button></Link>
+              <Link href={slide.link || (slide.slug ? `/donasi/${slide.slug}` : '/donasi')}><Button size="lg" className="rounded-xl h-12 px-7 text-base"><Heart className="w-5 h-5 mr-2" />Donasi Sekarang</Button></Link>
               <Link href="/program"><Button size="lg" variant="outline" className="rounded-xl h-12 px-7 text-base bg-white/10 text-white border-white/50 hover:bg-white hover:text-brand-ink">Lihat Program</Button></Link>
             </div>
           </div>
         </div>
 
         <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-2 z-10">
-          {HERO_SLIDES.map((_, i) => (
+          {cfgSlides.map((_, i) => (
             <button key={i} onClick={() => setCurrent(i)} className={`h-2 rounded-full transition-all ${i === current ? 'w-8 bg-white' : 'w-2 bg-white/50'}`} />
           ))}
         </div>

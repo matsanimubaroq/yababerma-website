@@ -537,6 +537,15 @@ async function handleRoute(request, { params }) {
       return handleCORS(res)
     }
 
+    // ---- Home slider settings (public read) ----
+    if (route === '/home-settings' && method === 'GET') {
+      const doc = await db.collection('settings').findOne({ id: 'home_settings' })
+      return handleCORS(NextResponse.json({
+        slides: Array.isArray(doc?.slides) ? doc.slides : [],
+        duration_ms: Number(doc?.duration_ms) > 0 ? Number(doc.duration_ms) : 6000,
+      }))
+    }
+
     if (path[0] === 'campaigns' && path[1] && method === 'GET') {
       const item = await db.collection('campaigns').findOne({ slug: path[1] })
       if (!item) return handleCORS(NextResponse.json({ error: 'Campaign not found' }, { status: 404 }))
@@ -988,6 +997,14 @@ async function handleRoute(request, { params }) {
         const items = await db.collection('campaigns').find({}).sort({ created_at: -1 }).limit(500).toArray()
         return handleCORS(NextResponse.json(cleanArr(items)))
       }
+      // Single campaign (incl. drafts) for admin preview
+      if (path[0] === 'admin' && path[1] === 'campaigns' && path[2] && method === 'GET') {
+        const item = await db.collection('campaigns').findOne({ id: path[2] })
+        if (!item) return handleCORS(NextResponse.json({ error: 'Program tidak ditemukan' }, { status: 404 }))
+        const donations = await db.collection('donations').find({ campaign_slug: item.slug }).sort({ created_at: -1 }).limit(10).toArray()
+        const recent = donations.map(d => ({ name: d.is_anonymous ? 'Hamba Allah' : d.donor_name, amount: d.amount, message: d.message || '', created_at: d.created_at }))
+        return handleCORS(NextResponse.json({ ...clean(item), recent_donations: recent }))
+      }
       if (route === '/admin/campaigns' && method === 'POST') {
         const body = await request.json()
         const title = String(body.title || '').trim()
@@ -1042,6 +1059,24 @@ async function handleRoute(request, { params }) {
       if (path[0] === 'admin' && path[1] === 'campaigns' && path[2] && method === 'DELETE') {
         const r = await db.collection('campaigns').deleteOne({ id: path[2] })
         return handleCORS(NextResponse.json({ ok: true, deleted: r.deletedCount || 0 }))
+      }
+
+      // ---- Home slider settings (admin save) ----
+      if (route === '/admin/home-settings' && method === 'POST') {
+        const body = await request.json()
+        const slides = Array.isArray(body.slides) ? body.slides.map((s) => ({
+          id: s.id || uuidv4(),
+          type: s.type === 'banner' ? 'banner' : 'campaign',
+          image: String(s.image || ''),
+          title: String(s.title || ''),
+          subtitle: String(s.subtitle || ''),
+          badge: String(s.badge || ''),
+          link: String(s.link || ''),
+          slug: String(s.slug || ''),
+        })) : []
+        const duration_ms = Number(body.duration_ms) > 0 ? Number(body.duration_ms) : 6000
+        await db.collection('settings').updateOne({ id: 'home_settings' }, { $set: { id: 'home_settings', slides, duration_ms, updated_at: new Date().toISOString() } }, { upsert: true })
+        return handleCORS(NextResponse.json({ ok: true, slides, duration_ms }))
       }
     }
 

@@ -146,6 +146,7 @@ export default function CampaignManager({ adminKey }) {
                   <div className="mt-2 text-xs text-muted-foreground">{formatRupiah(c.collected_amount)} / {formatRupiah(c.target_amount)} • {pct}% • {c.donor_count} donatur</div>
                   <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-border">
                     <Button size="sm" variant="outline" className="rounded-lg flex-1" onClick={() => openEdit(c)}><Pencil className="w-3.5 h-3.5 mr-1" />Edit</Button>
+                    <Button size="sm" variant="outline" className="rounded-lg" title="Pratinjau" onClick={() => window.open(`/admin/preview/${c.id}`, '_blank')}><ExternalLink className="w-3.5 h-3.5" /></Button>
                     <Button size="sm" variant="outline" className="rounded-lg" title={c.published === false ? 'Publikasikan' : 'Jadikan draf'} disabled={busyId === c.id} onClick={() => togglePublish(c)}>{busyId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : (c.published === false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />)}</Button>
                     <Button size="sm" variant="ghost" className="rounded-lg text-destructive" disabled={busyId === c.id} onClick={() => remove(c)}><Trash2 className="w-3.5 h-3.5" /></Button>
                   </div>
@@ -242,9 +243,14 @@ export default function CampaignManager({ adminKey }) {
             </div>
           </div>
 
-          <DialogFooter className="p-5 pt-3 border-t border-border gap-2">
-            <Button variant="outline" className="rounded-xl" onClick={() => save(false)} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}Simpan sebagai Draf</Button>
-            <Button className="rounded-xl" onClick={() => save(true)} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}Simpan &amp; Publikasikan</Button>
+          <DialogFooter className="p-5 pt-3 border-t border-border gap-2 sm:justify-between">
+            <div>
+              {editId && <Button variant="ghost" className="rounded-xl" onClick={() => window.open(`/admin/preview/${editId}`, '_blank')}><ExternalLink className="w-4 h-4 mr-2" />Pratinjau</Button>}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="rounded-xl" onClick={() => save(false)} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}Simpan sebagai Draf</Button>
+              <Button className="rounded-xl" onClick={() => save(true)} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}Simpan &amp; Publikasikan</Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
