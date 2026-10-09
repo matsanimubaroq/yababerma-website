@@ -1142,6 +1142,7 @@ async function handleRoute(request, { params }) {
         return handleCORS(NextResponse.json(cleanArr(items)))
       }
       if (route === '/admin/news' && method === 'POST') {
+        if (!db) return noDbResponse()
         const body = await request.json()
         const title = String(body.title || '').trim()
         if (!title) return handleCORS(NextResponse.json({ error: 'Judul wajib diisi.' }, { status: 400 }))
@@ -1152,9 +1153,11 @@ async function handleRoute(request, { params }) {
           id: uuidv4(),
           slug,
           title,
-          imageUrl: body.imageUrl || '',
-          content: body.content || '',
+          image: body.image || body.imageUrl || '',
+          date: body.date || new Date().toISOString().slice(0, 10),
+          read_time: body.read_time || 3,
           category: body.category || 'Berita',
+          content: body.content || '',
           status: body.status || 'Draft',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -1163,21 +1166,26 @@ async function handleRoute(request, { params }) {
         return handleCORS(NextResponse.json(clean(doc)))
       }
       if (path[0] === 'admin' && path[1] === 'news' && path[2] && method === 'PUT') {
+        if (!db) return noDbResponse()
         const id = path[2]
         const body = await request.json()
         const existing = await db.collection('news').findOne({ id })
         if (!existing) return handleCORS(NextResponse.json({ error: 'Berita tidak ditemukan' }, { status: 404 }))
         const update = { updatedAt: new Date().toISOString() }
         if ('title' in body) update.title = String(body.title).trim() || existing.title
-        if ('imageUrl' in body) update.imageUrl = body.imageUrl
+        if ('image' in body) update.image = body.image
+        if ('imageUrl' in body) update.image = body.imageUrl
         if ('content' in body) update.content = body.content
         if ('category' in body) update.category = body.category
         if ('status' in body) update.status = body.status
+        if ('date' in body) update.date = body.date
+        if ('read_time' in body) update.read_time = body.read_time
         await db.collection('news').updateOne({ id }, { $set: update })
         const d = await db.collection('news').findOne({ id })
         return handleCORS(NextResponse.json(clean(d)))
       }
       if (path[0] === 'admin' && path[1] === 'news' && path[2] && method === 'DELETE') {
+        if (!db) return noDbResponse()
         const r = await db.collection('news').deleteOne({ id: path[2] })
         return handleCORS(NextResponse.json({ ok: true, deleted: r.deletedCount || 0 }))
       }
