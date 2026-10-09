@@ -8,17 +8,33 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 // ---------------- MongoDB ----------------
 let dbPromise
 
+// Returns a Db instance, or null when MONGO_URL is missing/placeholder/unreachable.
+// Never throws: the site must keep serving seed data even without a database.
 async function connectToMongo() {
+  const uri = String(process.env.MONGO_URL || '').trim()
+  if (!uri || uri.includes('cluster0.abcde.mongodb.net') || !/^mongodb(\+srv)?:\/\//.test(uri)) {
+    if (uri) console.error('MONGO_URL tidak valid, berjalan tanpa database')
+    return null
+  }
   if (!dbPromise) {
-    const mongoClient = new MongoClient(process.env.MONGO_URL)
-    dbPromise = mongoClient.connect().then(async (c) => {
-      const database = c.db(process.env.DB_NAME)
-      try { await ensureSeed(database) } catch (e) { console.error('Seed error:', e) }
-      return database
-    }).catch((e) => { dbPromise = undefined; throw e })
+    try {
+      const mongoClient = new MongoClient(uri, { serverSelectionTimeoutMS: 8000 })
+      dbPromise = mongoClient.connect().then(async (c) => {
+        const database = c.db(process.env.DB_NAME || 'yababerma')
+        try { await ensureSeed(database) } catch (e) { console.error('Seed error:', e) }
+        return database
+      }).catch((e) => { console.error('Mongo connect error:', e?.message || e); dbPromise = undefined; return null })
+    } catch (e) {
+      console.error('Mongo init error:', e?.message || e)
+      dbPromise = undefined
+      return null
+    }
   }
   return dbPromise
 }
+
+const NO_DB_MESSAGE = 'Database belum dikonfigurasi di server (MONGO_URL). Hubungi administrator.'
+const noDbResponse = () => handleCORS(NextResponse.json({ error: NO_DB_MESSAGE, db_missing: true }, { status: 503 }))
 
 function handleCORS(response) {
   response.headers.set('Access-Control-Allow-Origin', process.env.CORS_ORIGINS || '*')
@@ -218,7 +234,7 @@ function seedCampaigns() {
         'Setiap huruf yang dibaca dari mushaf wakaf Anda akan menjadi pahala jariyah yang terus mengalir, insya Allah.'
       ],
       gallery: ['https://images.pexels.com/photos/31528155/pexels-photo-31528155.jpeg', 'https://images.unsplash.com/photo-1618190405497-00f284b5dda5', 'https://images.pexels.com/photos/20627702/pexels-photo-20627702.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940'],
-      updates: [ { date: daysFromNow(-5), title: 'Penyaluran Tahap 1', text: '250 mushaf telah tersalurkan ke 5 TPQ di Kabupaten Banjar.' }, { date: daysFromNow(-18), title: 'Program Dimulai', text: 'Penggalangan wakaf Al-Qur\u2019an resmi dibuka.' } ],
+      updates: [{ date: daysFromNow(-5), title: 'Penyaluran Tahap 1', text: '250 mushaf telah tersalurkan ke 5 TPQ di Kabupaten Banjar.' }, { date: daysFromNow(-18), title: 'Program Dimulai', text: 'Penggalangan wakaf Al-Qur\u2019an resmi dibuka.' }],
     },
     {
       id: uuidv4(), slug: 'operasional-panti-asuhan-banua-berkah',
@@ -232,7 +248,7 @@ function seedCampaigns() {
         'Mari menjadi orang tua asuh bagi mereka. Sedekah terbaik adalah yang menjaga keberlangsungan kebaikan.'
       ],
       gallery: ['https://images.unsplash.com/photo-1629273229664-11fabc0becc0', 'https://images.pexels.com/photos/34628746/pexels-photo-34628746.jpeg', 'https://images.pexels.com/photos/35105938/pexels-photo-35105938.jpeg'],
-      updates: [ { date: daysFromNow(-3), title: 'Belanja Kebutuhan Bulanan', text: 'Kebutuhan pangan bulan ini telah terpenuhi berkat para donatur.' } ],
+      updates: [{ date: daysFromNow(-3), title: 'Belanja Kebutuhan Bulanan', text: 'Kebutuhan pangan bulan ini telah terpenuhi berkat para donatur.' }],
     },
     {
       id: uuidv4(), slug: 'beasiswa-santri-tpq-banua-berkah',
@@ -246,7 +262,7 @@ function seedCampaigns() {
         'Investasi terbaik adalah pada generasi Qur\u2019ani. Bantu mereka terus belajar.'
       ],
       gallery: ['https://images.pexels.com/photos/20627702/pexels-photo-20627702.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940', 'https://images.pexels.com/photos/35548841/pexels-photo-35548841.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940'],
-      updates: [ { date: daysFromNow(-8), title: 'Wisuda Tahfizh', text: '12 santri menuntaskan hafalan Juz 30.' } ],
+      updates: [{ date: daysFromNow(-8), title: 'Wisuda Tahfizh', text: '12 santri menuntaskan hafalan Juz 30.' }],
     },
     {
       id: uuidv4(), slug: 'paket-sembako-dhuafa-banjarmasin',
@@ -260,7 +276,7 @@ function seedCampaigns() {
         'Ringankan beban saudara kita dengan sekantong keberkahan.'
       ],
       gallery: ['https://images.pexels.com/photos/7345447/pexels-photo-7345447.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940', 'https://images.pexels.com/photos/7345451/pexels-photo-7345451.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940', 'https://images.pexels.com/photos/6646926/pexels-photo-6646926.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940'],
-      updates: [ { date: daysFromNow(-2), title: 'Distribusi Pekan Ini', text: '120 paket sembako tersalurkan ke Kelurahan sekitar.' } ],
+      updates: [{ date: daysFromNow(-2), title: 'Distribusi Pekan Ini', text: '120 paket sembako tersalurkan ke Kelurahan sekitar.' }],
     },
     {
       id: uuidv4(), slug: 'zakat-maal-penyaluran-produktif',
@@ -274,7 +290,7 @@ function seedCampaigns() {
         'Tunaikan zakat, sucikan harta, dan berdayakan sesama.'
       ],
       gallery: ['https://images.unsplash.com/photo-1532629345422-7515f3d16bb6', 'https://images.pexels.com/photos/6647027/pexels-photo-6647027.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940'],
-      updates: [ { date: daysFromNow(-10), title: 'Modal Usaha Tersalur', text: '15 mustahik menerima modal usaha mikro.' } ],
+      updates: [{ date: daysFromNow(-10), title: 'Modal Usaha Tersalur', text: '15 mustahik menerima modal usaha mikro.' }],
     },
     {
       id: uuidv4(), slug: 'tanggap-bencana-kalimantan',
@@ -288,7 +304,7 @@ function seedCampaigns() {
         'Respon cepat Anda menyelamatkan lebih banyak keluarga.'
       ],
       gallery: ['https://images.pexels.com/photos/6646926/pexels-photo-6646926.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940', 'https://images.pexels.com/photos/6647027/pexels-photo-6647027.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940'],
-      updates: [ { date: daysFromNow(-1), title: 'Posko Didirikan', text: 'Posko bantuan berdiri di 3 titik pengungsian.' } ],
+      updates: [{ date: daysFromNow(-1), title: 'Posko Didirikan', text: 'Posko bantuan berdiri di 3 titik pengungsian.' }],
     },
     {
       id: uuidv4(), slug: 'fidyah-peduli-ramadhan',
@@ -302,7 +318,7 @@ function seedCampaigns() {
         'Tunaikan fidyah dengan mudah, kami yang menyalurkan amanahnya.'
       ],
       gallery: ['https://images.pexels.com/photos/36853519/pexels-photo-36853519.jpeg', 'https://images.pexels.com/photos/7345451/pexels-photo-7345451.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940'],
-      updates: [ { date: daysFromNow(-6), title: 'Penyaluran Awal', text: 'Fidyah tersalur kepada 40 penerima.' } ],
+      updates: [{ date: daysFromNow(-6), title: 'Penyaluran Awal', text: 'Fidyah tersalur kepada 40 penerima.' }],
     },
     {
       id: uuidv4(), slug: 'kurban-peduli-banua',
@@ -316,7 +332,7 @@ function seedCampaigns() {
         'Sempurnakan ibadah kurban Anda, hadirkan kebahagiaan di wajah saudara kita di Banua.'
       ],
       gallery: ['https://images.pexels.com/photos/6646926/pexels-photo-6646926.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940', 'https://images.pexels.com/photos/7345447/pexels-photo-7345447.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940'],
-      updates: [ { date: daysFromNow(-7), title: 'Pendaftaran Dibuka', text: 'Pendaftaran pekurban tahun ini resmi dibuka.' } ],
+      updates: [{ date: daysFromNow(-7), title: 'Pendaftaran Dibuka', text: 'Pendaftaran pekurban tahun ini resmi dibuka.' }],
       kurban_options: KURBAN_OPTIONS,
     },
   ]
@@ -397,9 +413,30 @@ async function getUserFromRequest(request, db) {
   return user ? clean(user) : null
 }
 
-function isAdmin(request) {
-  const key = request.headers.get('x-admin-key')
-  return !!key && key === process.env.ADMIN_KEY
+// ---------------- Admin key ----------------
+// The default key always works (recovery path); the env ADMIN_KEY and the key stored in the
+// `settings` collection (changed via the admin panel / OTP reset) are accepted as well.
+const DEFAULT_ADMIN_KEY = 'yababerma-admin-2026'
+
+async function getValidAdminKeys(db) {
+  const keys = new Set([DEFAULT_ADMIN_KEY])
+  const envKey = String(process.env.ADMIN_KEY || '').trim()
+  if (envKey) keys.add(envKey)
+  if (db) {
+    try {
+      const doc = await db.collection('settings').findOne({ id: 'admin_auth' })
+      const stored = doc && typeof doc.password === 'string' ? doc.password.trim() : ''
+      if (stored) keys.add(stored)
+    } catch (e) { console.error('Admin key lookup error:', e?.message || e) }
+  }
+  return keys
+}
+
+async function isValidAdminKey(db, provided) {
+  const key = String(provided || '').trim()
+  if (!key) return false
+  const valid = await getValidAdminKeys(db)
+  return valid.has(key)
 }
 
 function maskEmail(email) {
@@ -408,15 +445,6 @@ function maskEmail(email) {
   const u = parts[0]
   const masked = u.length <= 2 ? u[0] + '*' : u[0] + '*'.repeat(Math.max(1, u.length - 2)) + u[u.length - 1]
   return masked + '@' + parts[1]
-}
-
-// Admin key is stored in the `settings` collection (seeded once from env) so it can be reset.
-async function getAdminKey(db) {
-  const doc = await db.collection('settings').findOne({ id: 'admin_auth' })
-  if (doc && doc.password) return doc.password
-  const seed = process.env.ADMIN_KEY || ''
-  if (seed) await db.collection('settings').updateOne({ id: 'admin_auth' }, { $setOnInsert: { id: 'admin_auth', password: seed, created_at: new Date().toISOString() } }, { upsert: true })
-  return seed
 }
 
 async function sendAdminOtpEmail(otp) {
@@ -507,11 +535,12 @@ async function handleRoute(request, { params }) {
 
     // Health
     if ((route === '/' || route === '/root') && method === 'GET') {
-      return handleCORS(NextResponse.json({ message: 'YABABERMA API OK' }))
+      return handleCORS(NextResponse.json({ message: 'YABABERMA API OK', db: !!db }))
     }
 
     // ---- Campaigns ----
     if (route === '/campaigns' && method === 'GET') {
+      if (!db) return handleCORS(NextResponse.json(cleanArr(seedCampaigns())))
       const url = new URL(request.url)
       const category = url.searchParams.get('category')
       const featured = url.searchParams.get('featured')
@@ -528,18 +557,20 @@ async function handleRoute(request, { params }) {
       if (!m || !m.data) return handleCORS(NextResponse.json({ error: 'Not found' }, { status: 404 }))
       const raw = m.data.buffer ? m.data.buffer : m.data
       const buf = Buffer.from(raw)
-      const res = new NextResponse(buf, { status: 200, headers: {
-        'Content-Type': m.content_type || 'application/octet-stream',
-        'Content-Disposition': `inline; filename="${(m.filename || 'file').replace(/"/g, '')}"`,
-        'Content-Length': String(buf.length),
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      } })
+      const res = new NextResponse(buf, {
+        status: 200, headers: {
+          'Content-Type': m.content_type || 'application/octet-stream',
+          'Content-Disposition': `inline; filename="${(m.filename || 'file').replace(/"/g, '')}"`,
+          'Content-Length': String(buf.length),
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        }
+      })
       return handleCORS(res)
     }
 
     // ---- Home slider settings (public read) ----
     if (route === '/home-settings' && method === 'GET') {
-      const doc = await db.collection('settings').findOne({ id: 'home_settings' })
+      const doc = db ? await db.collection('settings').findOne({ id: 'home_settings' }) : null
       return handleCORS(NextResponse.json({
         slides: Array.isArray(doc?.slides) ? doc.slides : [],
         duration_ms: Number(doc?.duration_ms) > 0 ? Number(doc.duration_ms) : 6000,
@@ -547,11 +578,11 @@ async function handleRoute(request, { params }) {
     }
 
     if (path[0] === 'campaigns' && path[1] && method === 'GET') {
-      const item = await db.collection('campaigns').findOne({ slug: path[1] })
+      const item = db ? await db.collection('campaigns').findOne({ slug: path[1] }) : seedCampaigns().find(c => c.slug === path[1])
       if (!item) return handleCORS(NextResponse.json({ error: 'Campaign not found' }, { status: 404 }))
       if (item.published === false) return handleCORS(NextResponse.json({ error: 'Campaign not found' }, { status: 404 }))
       // recent public donations for this campaign
-      const donations = await db.collection('donations').find({ campaign_slug: path[1] }).sort({ created_at: -1 }).limit(10).toArray()
+      const donations = db ? await db.collection('donations').find({ campaign_slug: path[1] }).sort({ created_at: -1 }).limit(10).toArray() : []
       const recent = donations.map(d => ({ name: d.is_anonymous ? 'Hamba Allah' : d.donor_name, amount: d.amount, message: d.message || '', created_at: d.created_at }))
       return handleCORS(NextResponse.json({ ...clean(item), recent_donations: recent }))
     }
@@ -597,7 +628,7 @@ async function handleRoute(request, { params }) {
 
       // Thank-you email is sent ONLY after admin verification (per config).
       // On creation we only notify the admin (background, non-blocking).
-      sendAdminNotifyEmail(donation).catch(() => {})
+      sendAdminNotifyEmail(donation).catch(() => { })
       // WhatsApp notification to admin on new donation (fire-and-forget, if enabled)
       getWaSettings(db).then((wa) => {
         if (wa.admin_notify_enabled && wa.admin_number) {
@@ -605,7 +636,7 @@ async function handleRoute(request, { params }) {
           const msg = `\uD83D\uDD14 *Donasi Baru Masuk*\n\nNama: ${who}\nProgram: ${donation.campaign_title}\nNominal: Rp ${Number(donation.amount || 0).toLocaleString('id-ID')}\nTotal transfer: Rp ${Number(donation.total_amount || 0).toLocaleString('id-ID')} (kode unik ${donation.unique_code})\nWA donatur: ${donation.donor_whatsapp}\n\nSegera verifikasi di panel admin:\nyababerma.org/admin`
           fonnteSend(wa.admin_number, msg)
         }
-      }).catch(() => {})
+      }).catch(() => { })
 
       return handleCORS(NextResponse.json(donation))
     }
@@ -661,39 +692,42 @@ async function handleRoute(request, { params }) {
           const msg = `\uD83D\uDCE8 *Konfirmasi Transfer Baru*\n\nNama: ${conf.name}\nProgram: ${conf.program || '-'}\nNominal: Rp ${Number(conf.amount || 0).toLocaleString('id-ID')}\nBank: ${conf.bank || '-'}\nWA: ${conf.whatsapp}\nLampiran bukti: ${conf.proof_image ? 'Ada' : 'Tidak ada'}\n\nCek di panel admin:\nyababerma.org/admin`
           fonnteSend(wa.admin_number, msg)
         }
-      }).catch(() => {})
+      }).catch(() => { })
       const { proof_image, ...safe } = conf
       return handleCORS(NextResponse.json({ ok: true, confirmation: safe }))
     }
 
-    // ---- News ----
+    // ---- News & Articles ----
     if (route === '/news' && method === 'GET') {
-      const items = await db.collection('news').find({}).sort({ date: -1 }).limit(50).toArray()
+      if (!db) return handleCORS(NextResponse.json(cleanArr(seedNews())))
+      const items = await db.collection('news').find({ status: 'Published' }).sort({ createdAt: -1 }).limit(50).toArray()
       return handleCORS(NextResponse.json(cleanArr(items)))
     }
     if (path[0] === 'news' && path[1] && method === 'GET') {
-      const item = await db.collection('news').findOne({ slug: path[1] })
+      const item = db ? await db.collection('news').findOne({ slug: path[1], status: 'Published' }) : seedNews().find(n => n.slug === path[1])
       if (!item) return handleCORS(NextResponse.json({ error: 'News not found' }, { status: 404 }))
       return handleCORS(NextResponse.json(clean(item)))
     }
 
     // ---- Testimonials & Gallery ----
     if (route === '/testimonials' && method === 'GET') {
+      if (!db) return handleCORS(NextResponse.json(cleanArr(seedTestimonials())))
       const items = await db.collection('testimonials').find({}).limit(50).toArray()
       return handleCORS(NextResponse.json(cleanArr(items)))
     }
     if (route === '/gallery' && method === 'GET') {
+      if (!db) return handleCORS(NextResponse.json(cleanArr(seedGallery())))
       const items = await db.collection('gallery').find({}).limit(100).toArray()
       return handleCORS(NextResponse.json(cleanArr(items)))
     }
 
     // ---- Stats ----
     if (route === '/stats' && method === 'GET') {
-      const campaigns = await db.collection('campaigns').find({}).limit(200).toArray()
+      const campaigns = db ? await db.collection('campaigns').find({}).limit(200).toArray() : seedCampaigns()
       const total_collected = campaigns.reduce((s, c) => s + (c.collected_amount || 0), 0)
       const total_donors = campaigns.reduce((s, c) => s + (c.donor_count || 0), 0)
       const total_target = campaigns.reduce((s, c) => s + (c.target_amount || 0), 0)
-      const total_donations = await db.collection('donations').countDocuments()
+      const total_donations = db ? await db.collection('donations').countDocuments() : 0
       return handleCORS(NextResponse.json({
         humanitarian: 3000, wakaf_quran: 2100, panti: 500, pemberdayaan: 200,
         total_collected, total_donors, total_target, total_donations, active_campaigns: campaigns.length,
@@ -702,10 +736,10 @@ async function handleRoute(request, { params }) {
 
     // ---- Kurban real-time quota ----
     if (route === '/kurban/quota' && method === 'GET') {
-      const camp = await db.collection('campaigns').findOne({ slug: 'kurban-peduli-banua' })
+      const camp = db ? await db.collection('campaigns').findOne({ slug: 'kurban-peduli-banua' }) : null
       const opts = (camp && Array.isArray(camp.kurban_options) && camp.kurban_options[0] && camp.kurban_options[0].quota != null)
         ? camp.kurban_options : KURBAN_OPTIONS
-      const dons = await db.collection('donations').find({ campaign_slug: 'kurban-peduli-banua', kurban_option: { $nin: [null, ''] } }).limit(5000).toArray()
+      const dons = db ? await db.collection('donations').find({ campaign_slug: 'kurban-peduli-banua', kurban_option: { $nin: [null, ''] } }).limit(5000).toArray() : []
       const soldMap = {}
       dons.forEach(d => { const q = Number(d.kurban_qty) || 1; soldMap[d.kurban_option] = (soldMap[d.kurban_option] || 0) + q })
       const options = opts.map(o => {
@@ -724,19 +758,19 @@ async function handleRoute(request, { params }) {
       const currentYear = new Date().getFullYear()
 
       // Live current-year figures derived from live campaigns + donations
-      const campaigns = await db.collection('campaigns').find({}).limit(200).toArray()
+      const campaigns = db ? await db.collection('campaigns').find({}).limit(200).toArray() : seedCampaigns()
       const catMap = {}
       campaigns.forEach(c => { catMap[c.category] = (catMap[c.category] || 0) + (c.collected_amount || 0) })
       const liveDoc = {
         year: currentYear,
         total_collected: campaigns.reduce((s, c) => s + (c.collected_amount || 0), 0),
         total_donors: campaigns.reduce((s, c) => s + (c.donor_count || 0), 0),
-        total_donations: await db.collection('donations').countDocuments(),
+        total_donations: db ? await db.collection('donations').countDocuments() : 0,
         by_category: Object.entries(catMap).map(([category, amount]) => ({ category, amount })),
         by_program: campaigns.map(c => ({ title: c.title, slug: c.slug, collected: c.collected_amount || 0, target: c.target_amount || 0 })),
       }
 
-      const history = cleanArr(await db.collection('annual_reports').find({}).sort({ year: -1 }).limit(20).toArray())
+      const history = db ? cleanArr(await db.collection('annual_reports').find({}).sort({ year: -1 }).limit(20).toArray()) : seedAnnualReports()
       const allDocs = [liveDoc, ...history.filter(h => h.year !== currentYear)]
       const years = ['all', ...allDocs.map(d => String(d.year)).sort((a, b) => Number(b) - Number(a))]
 
@@ -790,6 +824,7 @@ async function handleRoute(request, { params }) {
     }
 
     if (route === '/auth/me' && method === 'GET') {
+      if (!db) return handleCORS(NextResponse.json({ user: null }, { status: 200 }))
       const user = await getUserFromRequest(request, db)
       if (!user) return handleCORS(NextResponse.json({ user: null }, { status: 200 }))
       return handleCORS(NextResponse.json({ user }))
@@ -818,9 +853,9 @@ async function handleRoute(request, { params }) {
     // ---- Prayers (Dinding Doa) ----
     if (route === '/prayers' && method === 'GET') {
       // Only include donation messages the donor explicitly opted to display on the wall
-      const real = await db.collection('donations').find({ message: { $nin: [null, ''] }, show_on_wall: true }).sort({ created_at: -1 }).limit(20).toArray()
+      const real = db ? await db.collection('donations').find({ message: { $nin: [null, ''] }, show_on_wall: true }).sort({ created_at: -1 }).limit(20).toArray() : []
       const realMapped = real.map(d => ({ name: d.is_anonymous ? 'Hamba Allah' : (d.donor_name || 'Hamba Allah'), message: d.message, program: d.campaign_title || '' }))
-      const seeded = await db.collection('prayers').find({}).sort({ created_at: -1 }).limit(50).toArray()
+      const seeded = db ? await db.collection('prayers').find({}).sort({ created_at: -1 }).limit(50).toArray() : seedPrayers()
       const seededMapped = seeded.map(p => ({ name: p.name, message: p.message, program: p.program }))
       const all = [...realMapped, ...seededMapped].slice(0, 30)
       return handleCORS(NextResponse.json(all))
@@ -828,14 +863,17 @@ async function handleRoute(request, { params }) {
 
     // ---- Admin ----
     if (route === '/admin/login' && method === 'POST') {
-      const body = await request.json()
-      const adminKey = await getAdminKey(db)
-      if (!body.key || body.key !== adminKey) return handleCORS(NextResponse.json({ error: 'Kunci admin salah' }, { status: 401 }))
-      return handleCORS(NextResponse.json({ ok: true }))
+      const body = await request.json().catch(() => ({}))
+      const providedKey = String(body.key || '').trim()
+      if (await isValidAdminKey(db, providedKey)) {
+        return handleCORS(NextResponse.json({ ok: true, db: !!db }))
+      }
+      return handleCORS(NextResponse.json({ error: 'Kunci admin salah' }, { status: 401 }))
     }
 
     // Forgot password: send an OTP to the configured admin email
     if (route === '/admin/forgot-password' && method === 'POST') {
+      if (!db) return noDbResponse()
       if (!resend || !process.env.ADMIN_EMAIL) return handleCORS(NextResponse.json({ error: 'Email admin belum dikonfigurasi di server.' }, { status: 500 }))
       const now = Date.now()
       const existing = await db.collection('settings').findOne({ id: 'admin_reset' })
@@ -851,6 +889,7 @@ async function handleRoute(request, { params }) {
 
     // Reset password using OTP
     if (route === '/admin/reset-password' && method === 'POST') {
+      if (!db) return noDbResponse()
       const body = await request.json()
       const otp = String(body.otp || '').trim()
       const newPass = String(body.new_password || '')
@@ -866,9 +905,21 @@ async function handleRoute(request, { params }) {
     }
 
     if (route.startsWith('/admin')) {
-      const adminKey = await getAdminKey(db)
-      const provided = request.headers.get('x-admin-key')
-      if (!provided || provided !== adminKey) return handleCORS(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
+      const provided = String(request.headers.get('x-admin-key') || '').trim()
+      if (!(await isValidAdminKey(db, provided))) return handleCORS(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
+
+      // Without a database the panel can still be opened, but there is nothing to manage:
+      // answer GETs with empty/default payloads and refuse writes with a clear message.
+      if (!db) {
+        if (method === 'GET') {
+          if (route === '/admin/summary') return handleCORS(NextResponse.json({ total_donations: 0, verified: 0, pending: 0, total_verified: 0, total_all: 0, confirmations: 0, db_missing: true }))
+          if (route === '/admin/kurban') return handleCORS(NextResponse.json({ options: KURBAN_OPTIONS.map(o => ({ key: o.key, name: o.name, unit: o.unit, price: o.price, quota: o.quota || 0, sold_base: o.sold_base || 0 })), db_missing: true }))
+          if (route === '/admin/wa-settings') return handleCORS(NextResponse.json({ thank_you_template: DEFAULT_WA_TEMPLATE, admin_notify_enabled: false, admin_number: '', token_configured: !!process.env.FONNTE_TOKEN, default_template: DEFAULT_WA_TEMPLATE, db_missing: true }))
+          if (route === '/admin/home-settings') return handleCORS(NextResponse.json({ slides: [], duration_ms: 6000, db_missing: true }))
+          return handleCORS(NextResponse.json([]))
+        }
+        return noDbResponse()
+      }
 
       if (route === '/admin/summary' && method === 'GET') {
         const donations = await db.collection('donations').find({}).limit(10000).toArray()
@@ -893,12 +944,12 @@ async function handleRoute(request, { params }) {
         await db.collection('donations').updateOne({ id: body.donation_id }, { $set: { status, verified_at: status === 'verified' ? new Date().toISOString() : null } })
         const d = await db.collection('donations').findOne({ id: body.donation_id })
         if (d && status === 'verified') {
-          sendVerifiedEmail(clean(d)).catch(() => {})
+          sendVerifiedEmail(clean(d)).catch(() => { })
           // Fire-and-forget WhatsApp thank-you (idempotent) via Fonnte, using admin-editable template
           if (!d.wa_thanked_at) {
             getWaSettings(db).then((wa) => sendWhatsAppThankYou(clean(d), wa.thank_you_template)).then((ok) => {
-              if (ok) db.collection('donations').updateOne({ id: d.id }, { $set: { wa_thanked_at: new Date().toISOString() } }).catch(() => {})
-            }).catch(() => {})
+              if (ok) db.collection('donations').updateOne({ id: d.id }, { $set: { wa_thanked_at: new Date().toISOString() } }).catch(() => { })
+            }).catch(() => { })
           }
         }
         return handleCORS(NextResponse.json({ ok: true, donation: d ? clean(d) : null }))
@@ -1078,12 +1129,60 @@ async function handleRoute(request, { params }) {
         await db.collection('settings').updateOne({ id: 'home_settings' }, { $set: { id: 'home_settings', slides, duration_ms, updated_at: new Date().toISOString() } }, { upsert: true })
         return handleCORS(NextResponse.json({ ok: true, slides, duration_ms }))
       }
+
+      // ---- News/Articles CMS ----
+      if (route === '/admin/news' && method === 'GET') {
+        const items = await db.collection('news').find({}).sort({ createdAt: -1 }).limit(500).toArray()
+        return handleCORS(NextResponse.json(cleanArr(items)))
+      }
+      if (route === '/admin/news' && method === 'POST') {
+        const body = await request.json()
+        const title = String(body.title || '').trim()
+        if (!title) return handleCORS(NextResponse.json({ error: 'Judul wajib diisi.' }, { status: 400 }))
+        let base = slugify(title) || ('news-' + Date.now())
+        let slug = base, n = 1
+        while (await db.collection('news').findOne({ slug })) { slug = `${base}-${++n}` }
+        const doc = {
+          id: uuidv4(),
+          slug,
+          title,
+          imageUrl: body.imageUrl || '',
+          content: body.content || '',
+          category: body.category || 'Berita',
+          status: body.status || 'Draft',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }
+        await db.collection('news').insertOne({ ...doc })
+        return handleCORS(NextResponse.json(clean(doc)))
+      }
+      if (path[0] === 'admin' && path[1] === 'news' && path[2] && method === 'PUT') {
+        const id = path[2]
+        const body = await request.json()
+        const existing = await db.collection('news').findOne({ id })
+        if (!existing) return handleCORS(NextResponse.json({ error: 'Berita tidak ditemukan' }, { status: 404 }))
+        const update = { updatedAt: new Date().toISOString() }
+        if ('title' in body) update.title = String(body.title).trim() || existing.title
+        if ('imageUrl' in body) update.imageUrl = body.imageUrl
+        if ('content' in body) update.content = body.content
+        if ('category' in body) update.category = body.category
+        if ('status' in body) update.status = body.status
+        await db.collection('news').updateOne({ id }, { $set: update })
+        const d = await db.collection('news').findOne({ id })
+        return handleCORS(NextResponse.json(clean(d)))
+      }
+      if (path[0] === 'admin' && path[1] === 'news' && path[2] && method === 'DELETE') {
+        const r = await db.collection('news').deleteOne({ id: path[2] })
+        return handleCORS(NextResponse.json({ ok: true, deleted: r.deletedCount || 0 }))
+      }
     }
 
     return handleCORS(NextResponse.json({ error: `Route ${route} not found` }, { status: 404 }))
   } catch (error) {
-    console.error('API Error:', error)
-    return handleCORS(NextResponse.json({ error: 'Internal server error', detail: String(error) }, { status: 500 }))
+    console.error('API Error:', route, error)
+    // Most crashes on a DB-less deployment are `db.collection` on null → tell the caller clearly.
+    if (!dbPromise && /Cannot read propert(y|ies) of null/.test(String(error))) return noDbResponse()
+    return handleCORS(NextResponse.json({ error: 'Internal server error', detail: String(error?.message || error) }, { status: 500 }))
   }
 }
 

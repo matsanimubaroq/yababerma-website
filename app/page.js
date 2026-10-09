@@ -128,7 +128,7 @@ export default function App() {
           <Link href="/donasi" className="hidden md:block"><Button variant="outline" className="rounded-xl">Semua Program<ArrowRight className="w-4 h-4 ml-2" /></Button></Link>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {(featured || []).slice(0, 4).map((c) => <CampaignCard key={c.id} c={c} />)}
+          {Array.isArray(featured) ? featured.slice(0, 4).map((c) => <CampaignCard key={c.id} c={c} />) : null}
           {!featured && Array.from({ length: 4 }).map((_, i) => <div key={i} className="rounded-2xl bg-muted animate-pulse h-96" />)}
         </div>
       </section>
@@ -173,7 +173,7 @@ export default function App() {
       <section className="container py-16 md:py-20">
         <SectionHeading eyebrow="Kabar Kebaikan" title="Berita &amp; Artikel Terbaru" center />
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5 mt-10">
-          {(news || []).slice(0, 4).map((n) => (
+          {Array.isArray(news) ? news.slice(0, 4).map((n) => (
             <Link key={n.id} href={`/kegiatan`}>
               <Card className="overflow-hidden rounded-2xl border-border shadow-sm hover:shadow-card transition-all duration-300 group h-full">
                 <div className="aspect-[16/10] overflow-hidden">
@@ -189,7 +189,7 @@ export default function App() {
                 </div>
               </Card>
             </Link>
-          ))}
+          )) : null}
         </div>
       </section>
 
@@ -200,7 +200,7 @@ export default function App() {
           <div className="mt-10 px-4 md:px-10">
             <Carousel opts={{ align: 'start', loop: true }}>
               <CarouselContent>
-                {(testimonials || []).map((t) => (
+                {Array.isArray(testimonials) ? testimonials.map((t) => (
                   <CarouselItem key={t.id} className="md:basis-1/2 lg:basis-1/3">
                     <Card className="rounded-2xl p-6 h-full border-border bg-white shadow-sm">
                       <Quote className="w-8 h-8 text-brand-green/30" />
@@ -214,7 +214,7 @@ export default function App() {
                       </div>
                     </Card>
                   </CarouselItem>
-                ))}
+                )) : null}
               </CarouselContent>
               <CarouselPrevious className="hidden md:flex" />
               <CarouselNext className="hidden md:flex" />
@@ -237,11 +237,11 @@ export default function App() {
             <span className="absolute bottom-4 left-4 text-white font-semibold text-sm bg-black/50 px-3 py-1 rounded-full">Kunjungi Kanal YouTube Kami</span>
           </a>
           <div className="grid grid-cols-3 gap-3">
-            {(gallery || []).slice(0, 6).map((g) => (
+            {Array.isArray(gallery) ? gallery.slice(0, 6).map((g) => (
               <div key={g.id} className="aspect-square rounded-xl overflow-hidden group relative">
                 <img src={g.image} alt={g.caption} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
               </div>
-            ))}
+            )) : null}
           </div>
         </div>
       </section>

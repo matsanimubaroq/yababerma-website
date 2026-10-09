@@ -11,15 +11,27 @@ export function useApi(path) {
     let active = true;
     setLoading(true);
     fetch(path, { credentials: 'include' })
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) {
+          const text = await r.text();
+          throw new Error(text || `HTTP error! status: ${r.status}`);
+        }
+        const contentType = r.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new TypeError("Response was not JSON");
+        }
+        return r.json();
+      })
       .then((d) => {
         if (active) {
           setData(d);
+          setError(null);
           setLoading(false);
         }
       })
       .catch((e) => {
         if (active) {
+          console.error(`API Error (${path}):`, e);
           setError(e);
           setLoading(false);
         }

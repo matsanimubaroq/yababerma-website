@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 
 export default function InstagramFeed() {
   const { data: gallery } = useApi('/api/gallery');
-  const posts = (gallery || []).slice(0, 6);
+  const posts = Array.isArray(gallery) ? gallery.slice(0, 6) : [];
 
   return (
     <section className="container py-16 md:py-20">

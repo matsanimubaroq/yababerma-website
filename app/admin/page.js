@@ -18,7 +18,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Ba
 import { formatRupiah } from '@/lib/site-data';
 import CampaignManager from '@/components/admin/campaign-manager';
 import SliderManager from '@/components/admin/slider-manager';
-import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint, Search, Trash2, LayoutGrid, List as ListIcon, BarChart3, ImageDown, SlidersHorizontal, Eye, EyeOff, Mail, ArrowLeft, KeyRound, MessageSquare, Bell, Send } from 'lucide-react';
+import NewsManager from '@/components/admin/news-manager';
+import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint, Search, Trash2, LayoutGrid, List as ListIcon, BarChart3, ImageDown, SlidersHorizontal, Eye, EyeOff, Mail, ArrowLeft, KeyRound, MessageSquare, Bell, Send, Newspaper } from 'lucide-react';
 
 const CHART_COLORS = ['#00A651', '#0082C8', '#F59E0B', '#8B5CF6', '#EF4444', '#14B8A6', '#EC4899', '#64748B'];
 
@@ -92,9 +93,10 @@ export default function AdminPage() {
 
   const login = async () => {
     setLoading(true);
+    const trimmedKey = String(key || '').trim();
     try {
-      const r = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
-      if (r.ok) { localStorage.setItem(KEY_STORAGE, key); setAuthed(true); await loadAll(key); toast.success('Selamat datang, Admin'); }
+      const r = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: trimmedKey }) });
+      if (r.ok) { localStorage.setItem(KEY_STORAGE, trimmedKey); setAuthed(true); await loadAll(trimmedKey); toast.success('Selamat datang, Admin'); }
       else toast.error('Kunci admin salah');
     } catch { toast.error('Gagal login'); } finally { setLoading(false); }
   };
@@ -306,7 +308,7 @@ export default function AdminPage() {
                   <button type="button" onClick={() => setShowPass((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-brand-ink" title={showPass ? 'Sembunyikan password' : 'Lihat password'}>{showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
                 </div>
               </div>
-              <Button onClick={login} disabled={loading || !key} className="w-full rounded-xl mt-4 h-11">{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (<><LogIn className="w-4 h-4 mr-2" />Masuk</>)}</Button>
+              <Button onClick={login} disabled={loading || !key.trim()} className="w-full rounded-xl mt-4 h-11">{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (<><LogIn className="w-4 h-4 mr-2" />Masuk</>)}</Button>
               <button type="button" onClick={() => setAuthMode('forgot')} className="w-full text-center text-sm text-brand-blue hover:underline mt-4">Lupa password?</button>
             </>
           )}
@@ -356,18 +358,25 @@ export default function AdminPage() {
   ];
 
   const NAV_GROUPS = [
-    { label: 'Transaksi', items: [
-      { value: 'donasi', label: 'Donasi', icon: Wallet, badge: donations.length },
-      { value: 'konfirmasi', label: 'Konfirmasi Transfer', icon: FileCheck2, badge: confs.length },
-    ] },
-    { label: 'Konten Website', items: [
-      { value: 'slider', label: 'Slider Beranda', icon: SlidersHorizontal },
-      { value: 'program', label: 'Program & Donasi', icon: LayoutGrid },
-    ] },
-    { label: 'Pengaturan', items: [
-      { value: 'kurban', label: 'Kuota Kurban', icon: PawPrint },
-      { value: 'wa', label: 'Pengaturan WA', icon: MessageSquare },
-    ] },
+    {
+      label: 'Transaksi', items: [
+        { value: 'donasi', label: 'Donasi', icon: Wallet, badge: donations.length },
+        { value: 'konfirmasi', label: 'Konfirmasi Transfer', icon: FileCheck2, badge: confs.length },
+      ]
+    },
+    {
+      label: 'Konten Website', items: [
+        { value: 'slider', label: 'Slider Beranda', icon: SlidersHorizontal },
+        { value: 'program', label: 'Program & Donasi', icon: LayoutGrid },
+        { value: 'news', label: 'Berita & Artikel', icon: Newspaper },
+      ]
+    },
+    {
+      label: 'Pengaturan', items: [
+        { value: 'kurban', label: 'Kuota Kurban', icon: PawPrint },
+        { value: 'wa', label: 'Pengaturan WA', icon: MessageSquare },
+      ]
+    },
   ];
 
   return (
@@ -448,370 +457,374 @@ export default function AdminPage() {
           </nav>
 
           <div className="flex-1 min-w-0 w-full">
-          <TabsContent value="donasi" className="mt-0 space-y-4">
-            <Card className="rounded-2xl border-border bg-white p-4">
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative flex-1 min-w-[200px]">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama, program, atau WA..." className="pl-9 rounded-xl" />
+            <TabsContent value="donasi" className="mt-0 space-y-4">
+              <Card className="rounded-2xl border-border bg-white p-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama, program, atau WA..." className="pl-9 rounded-xl" />
+                    </div>
+                    <Select value={sortBy} onValueChange={setSortBy}>
+                      <SelectTrigger className="w-[165px] rounded-xl"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="newest">Terbaru</SelectItem>
+                        <SelectItem value="oldest">Terlama</SelectItem>
+                        <SelectItem value="amount_desc">Nominal Tertinggi</SelectItem>
+                        <SelectItem value="amount_asc">Nominal Terendah</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={timeFilter} onValueChange={setTimeFilter}>
+                      <SelectTrigger className="w-[140px] rounded-xl"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Waktu</SelectItem>
+                        <SelectItem value="week">7 Hari</SelectItem>
+                        <SelectItem value="month">30 Hari</SelectItem>
+                        <SelectItem value="year">1 Tahun</SelectItem>
+                        <SelectItem value="custom">Kustom</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="w-[145px] rounded-xl"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Status</SelectItem>
+                        <SelectItem value="verified">Terverifikasi</SelectItem>
+                        <SelectItem value="pending">Menunggu</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="flex rounded-xl border border-border overflow-hidden">
+                      <button onClick={() => setDonView('table')} className={`px-3 h-9 flex items-center ${donView === 'table' ? 'bg-brand-green text-white' : 'text-muted-foreground hover:bg-brand-slatebg'}`} title="Tabel"><ListIcon className="w-4 h-4" /></button>
+                      <button onClick={() => setDonView('gallery')} className={`px-3 h-9 flex items-center ${donView === 'gallery' ? 'bg-brand-green text-white' : 'text-muted-foreground hover:bg-brand-slatebg'}`} title="Galeri"><LayoutGrid className="w-4 h-4" /></button>
+                      <button onClick={() => setDonView('chart')} className={`px-3 h-9 flex items-center ${donView === 'chart' ? 'bg-brand-green text-white' : 'text-muted-foreground hover:bg-brand-slatebg'}`} title="Infografis"><BarChart3 className="w-4 h-4" /></button>
+                    </div>
                   </div>
-                  <Select value={sortBy} onValueChange={setSortBy}>
-                    <SelectTrigger className="w-[165px] rounded-xl"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="newest">Terbaru</SelectItem>
-                      <SelectItem value="oldest">Terlama</SelectItem>
-                      <SelectItem value="amount_desc">Nominal Tertinggi</SelectItem>
-                      <SelectItem value="amount_asc">Nominal Terendah</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={timeFilter} onValueChange={setTimeFilter}>
-                    <SelectTrigger className="w-[140px] rounded-xl"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Semua Waktu</SelectItem>
-                      <SelectItem value="week">7 Hari</SelectItem>
-                      <SelectItem value="month">30 Hari</SelectItem>
-                      <SelectItem value="year">1 Tahun</SelectItem>
-                      <SelectItem value="custom">Kustom</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-[145px] rounded-xl"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Semua Status</SelectItem>
-                      <SelectItem value="verified">Terverifikasi</SelectItem>
-                      <SelectItem value="pending">Menunggu</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <div className="flex rounded-xl border border-border overflow-hidden">
-                    <button onClick={() => setDonView('table')} className={`px-3 h-9 flex items-center ${donView === 'table' ? 'bg-brand-green text-white' : 'text-muted-foreground hover:bg-brand-slatebg'}`} title="Tabel"><ListIcon className="w-4 h-4" /></button>
-                    <button onClick={() => setDonView('gallery')} className={`px-3 h-9 flex items-center ${donView === 'gallery' ? 'bg-brand-green text-white' : 'text-muted-foreground hover:bg-brand-slatebg'}`} title="Galeri"><LayoutGrid className="w-4 h-4" /></button>
-                    <button onClick={() => setDonView('chart')} className={`px-3 h-9 flex items-center ${donView === 'chart' ? 'bg-brand-green text-white' : 'text-muted-foreground hover:bg-brand-slatebg'}`} title="Infografis"><BarChart3 className="w-4 h-4" /></button>
-                  </div>
-                </div>
-                {timeFilter === 'custom' && (
-                  <div className="flex items-center gap-2 text-sm flex-wrap">
-                    <span className="text-muted-foreground">Dari</span>
-                    <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded-xl w-auto" />
-                    <span className="text-muted-foreground">s/d</span>
-                    <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded-xl w-auto" />
-                  </div>
-                )}
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <span className="text-xs text-muted-foreground">Menampilkan {filteredDon.length} dari {donations.length} donasi{selDon.length > 0 ? ` • ${selDon.length} dipilih` : ''}</span>
-                  {selDon.length > 0 && donView !== 'chart' && (
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => exportCsv(donations.filter((d) => selDon.includes(d.id)))}><Download className="w-4 h-4 mr-1" />Unduh CSV ({selDon.length})</Button>
-                      <Button size="sm" variant="outline" className="rounded-lg text-red-600 border-red-200 hover:bg-red-50" disabled={bulkBusy} onClick={() => bulkDelete('donations', selDon, setSelDon)}>{bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}Hapus ({selDon.length})</Button>
+                  {timeFilter === 'custom' && (
+                    <div className="flex items-center gap-2 text-sm flex-wrap">
+                      <span className="text-muted-foreground">Dari</span>
+                      <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded-xl w-auto" />
+                      <span className="text-muted-foreground">s/d</span>
+                      <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded-xl w-auto" />
                     </div>
                   )}
-                </div>
-              </div>
-            </Card>
-
-            {donView === 'chart' ? (
-              <div className="grid lg:grid-cols-2 gap-4">
-                <Card className="rounded-2xl border-border bg-white p-6">
-                  <h3 className="font-bold text-brand-ink mb-4 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-brand-green" />Dana per Program</h3>
-                  {progData.length === 0 ? <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">Tidak ada data</div> : (
-                    <ResponsiveContainer width="100%" height={280}>
-                      <BarChart data={progData} layout="vertical" margin={{ left: 10, right: 20 }}>
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
-                        <XAxis type="number" tickFormatter={shortRp} tick={{ fontSize: 11 }} />
-                        <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
-                        <Tooltip formatter={(v) => formatRupiah(v)} />
-                        <Bar dataKey="amount" name="Nominal" fill="#00A651" radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </Card>
-                <Card className="rounded-2xl border-border bg-white p-6">
-                  <h3 className="font-bold text-brand-ink mb-4 flex items-center gap-2"><FileCheck2 className="w-4 h-4 text-brand-green" />Status Donasi</h3>
-                  {statusData.length === 0 ? <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">Tidak ada data</div> : (
-                    <ResponsiveContainer width="100%" height={280}>
-                      <PieChart>
-                        <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                          {statusData.map((e, i) => (<Cell key={i} fill={i === 0 ? '#00A651' : '#F59E0B'} />))}
-                        </Pie>
-                        <Tooltip /><Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  )}
-                </Card>
-              </div>
-            ) : donView === 'gallery' ? (
-              filteredDon.length === 0 ? <Card className="rounded-2xl border-border bg-white p-10 text-center text-muted-foreground">Tidak ada donasi sesuai filter.</Card> : (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredDon.map((d) => (
-                    <Card key={d.id} className={`rounded-2xl border bg-white p-4 ${selDon.includes(d.id) ? 'border-brand-green ring-1 ring-brand-green' : 'border-border'}`}>
-                      <div className="flex items-start justify-between">
-                        <Checkbox checked={selDon.includes(d.id)} onCheckedChange={() => toggleSel('don', d.id)} />
-                        {d.status === 'verified' ? <Badge className="bg-brand-greenlight text-brand-green border-0 hover:bg-brand-greenlight">Terverifikasi</Badge> : <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-0 hover:bg-amber-100">Menunggu</Badge>}
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs text-muted-foreground">Menampilkan {filteredDon.length} dari {donations.length} donasi{selDon.length > 0 ? ` • ${selDon.length} dipilih` : ''}</span>
+                    {selDon.length > 0 && donView !== 'chart' && (
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" className="rounded-lg" onClick={() => exportCsv(donations.filter((d) => selDon.includes(d.id)))}><Download className="w-4 h-4 mr-1" />Unduh CSV ({selDon.length})</Button>
+                        <Button size="sm" variant="outline" className="rounded-lg text-red-600 border-red-200 hover:bg-red-50" disabled={bulkBusy} onClick={() => bulkDelete('donations', selDon, setSelDon)}>{bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}Hapus ({selDon.length})</Button>
                       </div>
-                      <div className="mt-3 flex items-center justify-between"><span className="font-semibold text-brand-ink">{d.is_anonymous ? 'Hamba Allah' : d.donor_name}</span><span className="font-bold text-brand-green">{formatRupiah(d.amount)}</span></div>
-                      <p className="text-xs text-muted-foreground mt-1 truncate">{d.campaign_title}</p>
-                      <p className="text-xs text-muted-foreground truncate">WA: {d.donor_whatsapp}{d.donor_email ? ` • ${d.donor_email}` : ''}</p>
-                      <p className="text-[11px] text-muted-foreground mt-1">{new Date(d.created_at).toLocaleString('id-ID')}</p>
-                      <div className="mt-3">
-                        {d.status === 'verified' ? <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground w-full" disabled={busy === d.id} onClick={() => verify(d.id, 'pending')}><RotateCcw className="w-4 h-4 mr-1" />Batalkan</Button> : <Button size="sm" className="rounded-lg w-full" disabled={busy === d.id} onClick={() => verify(d.id, 'verified')}>{busy === d.id ? <Loader2 className="w-4 h-4 animate-spin" /> : (<><CheckCircle2 className="w-4 h-4 mr-1" />Verifikasi</>)}</Button>}
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+              {donView === 'chart' ? (
+                <div className="grid lg:grid-cols-2 gap-4">
+                  <Card className="rounded-2xl border-border bg-white p-6">
+                    <h3 className="font-bold text-brand-ink mb-4 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-brand-green" />Dana per Program</h3>
+                    {progData.length === 0 ? <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">Tidak ada data</div> : (
+                      <ResponsiveContainer width="100%" height={280}>
+                        <BarChart data={progData} layout="vertical" margin={{ left: 10, right: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                          <XAxis type="number" tickFormatter={shortRp} tick={{ fontSize: 11 }} />
+                          <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
+                          <Tooltip formatter={(v) => formatRupiah(v)} />
+                          <Bar dataKey="amount" name="Nominal" fill="#00A651" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </Card>
+                  <Card className="rounded-2xl border-border bg-white p-6">
+                    <h3 className="font-bold text-brand-ink mb-4 flex items-center gap-2"><FileCheck2 className="w-4 h-4 text-brand-green" />Status Donasi</h3>
+                    {statusData.length === 0 ? <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">Tidak ada data</div> : (
+                      <ResponsiveContainer width="100%" height={280}>
+                        <PieChart>
+                          <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={95} paddingAngle={2}>
+                            {statusData.map((e, i) => (<Cell key={i} fill={i === 0 ? '#00A651' : '#F59E0B'} />))}
+                          </Pie>
+                          <Tooltip /><Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    )}
+                  </Card>
+                </div>
+              ) : donView === 'gallery' ? (
+                filteredDon.length === 0 ? <Card className="rounded-2xl border-border bg-white p-10 text-center text-muted-foreground">Tidak ada donasi sesuai filter.</Card> : (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredDon.map((d) => (
+                      <Card key={d.id} className={`rounded-2xl border bg-white p-4 ${selDon.includes(d.id) ? 'border-brand-green ring-1 ring-brand-green' : 'border-border'}`}>
+                        <div className="flex items-start justify-between">
+                          <Checkbox checked={selDon.includes(d.id)} onCheckedChange={() => toggleSel('don', d.id)} />
+                          {d.status === 'verified' ? <Badge className="bg-brand-greenlight text-brand-green border-0 hover:bg-brand-greenlight">Terverifikasi</Badge> : <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-0 hover:bg-amber-100">Menunggu</Badge>}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between"><span className="font-semibold text-brand-ink">{d.is_anonymous ? 'Hamba Allah' : d.donor_name}</span><span className="font-bold text-brand-green">{formatRupiah(d.amount)}</span></div>
+                        <p className="text-xs text-muted-foreground mt-1 truncate">{d.campaign_title}</p>
+                        <p className="text-xs text-muted-foreground truncate">WA: {d.donor_whatsapp}{d.donor_email ? ` • ${d.donor_email}` : ''}</p>
+                        <p className="text-[11px] text-muted-foreground mt-1">{new Date(d.created_at).toLocaleString('id-ID')}</p>
+                        <div className="mt-3">
+                          {d.status === 'verified' ? <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground w-full" disabled={busy === d.id} onClick={() => verify(d.id, 'pending')}><RotateCcw className="w-4 h-4 mr-1" />Batalkan</Button> : <Button size="sm" className="rounded-lg w-full" disabled={busy === d.id} onClick={() => verify(d.id, 'verified')}>{busy === d.id ? <Loader2 className="w-4 h-4 animate-spin" /> : (<><CheckCircle2 className="w-4 h-4 mr-1" />Verifikasi</>)}</Button>}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <Card className="rounded-2xl border-border bg-white overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-10"><Checkbox checked={filteredDon.length > 0 && selDon.length === filteredDon.length} onCheckedChange={() => toggleAll('don', filteredDon)} /></TableHead>
+                          <TableHead>Tanggal</TableHead>
+                          <TableHead>Donatur</TableHead>
+                          <TableHead>Program</TableHead>
+                          <TableHead className="text-right">Nominal</TableHead>
+                          <TableHead className="text-right">Total+Kode</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Aksi</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredDon.length === 0 ? (
+                          <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-10">Tidak ada donasi sesuai filter.</TableCell></TableRow>
+                        ) : filteredDon.map((d) => (
+                          <TableRow key={d.id} className={selDon.includes(d.id) ? 'bg-brand-greenlight/40' : ''}>
+                            <TableCell><Checkbox checked={selDon.includes(d.id)} onCheckedChange={() => toggleSel('don', d.id)} /></TableCell>
+                            <TableCell className="text-sm whitespace-nowrap">{new Date(d.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</TableCell>
+                            <TableCell className="text-sm"><div className="font-medium">{d.is_anonymous ? 'Hamba Allah' : d.donor_name}</div><div className="text-xs text-muted-foreground">{d.donor_whatsapp}</div></TableCell>
+                            <TableCell className="text-sm max-w-[180px] truncate">{d.campaign_title}</TableCell>
+                            <TableCell className="text-right text-sm font-semibold whitespace-nowrap">{formatRupiah(d.amount)}</TableCell>
+                            <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap">{formatRupiah(d.total_amount)}</TableCell>
+                            <TableCell>{d.status === 'verified' ? <Badge className="bg-brand-greenlight text-brand-green border-0 hover:bg-brand-greenlight">Terverifikasi</Badge> : <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-0 hover:bg-amber-100">Pending</Badge>}</TableCell>
+                            <TableCell className="text-right">
+                              {d.status === 'verified' ? (
+                                <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" disabled={busy === d.id} onClick={() => verify(d.id, 'pending')}><RotateCcw className="w-4 h-4 mr-1" />Batalkan</Button>
+                              ) : (
+                                <Button size="sm" className="rounded-lg" disabled={busy === d.id} onClick={() => verify(d.id, 'verified')}>{busy === d.id ? <Loader2 className="w-4 h-4 animate-spin" /> : (<><CheckCircle2 className="w-4 h-4 mr-1" />Verifikasi</>)}</Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="konfirmasi" className="mt-4 space-y-4">
+              <Card className="rounded-2xl border-border bg-white p-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama, program, atau WA..." className="pl-9 rounded-xl" />
+                    </div>
+                    <Select value={sortBy} onValueChange={setSortBy}>
+                      <SelectTrigger className="w-[165px] rounded-xl"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="newest">Terbaru</SelectItem>
+                        <SelectItem value="oldest">Terlama</SelectItem>
+                        <SelectItem value="amount_desc">Nominal Tertinggi</SelectItem>
+                        <SelectItem value="amount_asc">Nominal Terendah</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={timeFilter} onValueChange={setTimeFilter}>
+                      <SelectTrigger className="w-[140px] rounded-xl"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Waktu</SelectItem>
+                        <SelectItem value="week">7 Hari</SelectItem>
+                        <SelectItem value="month">30 Hari</SelectItem>
+                        <SelectItem value="year">1 Tahun</SelectItem>
+                        <SelectItem value="custom">Kustom</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="flex rounded-xl border border-border overflow-hidden">
+                      <button onClick={() => setConfView('gallery')} className={`px-3 h-9 flex items-center ${confView === 'gallery' ? 'bg-brand-green text-white' : 'text-muted-foreground hover:bg-brand-slatebg'}`} title="Galeri"><LayoutGrid className="w-4 h-4" /></button>
+                      <button onClick={() => setConfView('table')} className={`px-3 h-9 flex items-center ${confView === 'table' ? 'bg-brand-green text-white' : 'text-muted-foreground hover:bg-brand-slatebg'}`} title="Tabel"><ListIcon className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                  {timeFilter === 'custom' && (
+                    <div className="flex items-center gap-2 text-sm flex-wrap">
+                      <span className="text-muted-foreground">Dari</span>
+                      <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded-xl w-auto" />
+                      <span className="text-muted-foreground">s/d</span>
+                      <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded-xl w-auto" />
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs text-muted-foreground">Menampilkan {filteredConf.length} dari {confs.length} konfirmasi{selConf.length > 0 ? ` • ${selConf.length} dipilih` : ''}</span>
+                    <div className="flex gap-2 items-center">
+                      {filteredConf.length > 0 && <Button size="sm" variant="ghost" className="rounded-lg text-xs" onClick={() => toggleAll('conf', filteredConf)}>{selConf.length === filteredConf.length ? 'Batal pilih' : 'Pilih semua'}</Button>}
+                      {selConf.length > 0 && (<>
+                        <Button size="sm" variant="outline" className="rounded-lg" onClick={() => bulkDownloadProofs(selConf)}><ImageDown className="w-4 h-4 mr-1" />Unduh Resi ({selConf.length})</Button>
+                        <Button size="sm" variant="outline" className="rounded-lg text-red-600 border-red-200 hover:bg-red-50" disabled={bulkBusy} onClick={() => bulkDelete('confirmations', selConf, setSelConf)}>{bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}Hapus ({selConf.length})</Button>
+                      </>)}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {filteredConf.length === 0 ? (
+                <Card className="rounded-2xl border-border bg-white p-10 text-center text-muted-foreground">Tidak ada konfirmasi sesuai filter.</Card>
+              ) : confView === 'table' ? (
+                <Card className="rounded-2xl border-border bg-white overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader><TableRow>
+                        <TableHead className="w-10"><Checkbox checked={selConf.length === filteredConf.length} onCheckedChange={() => toggleAll('conf', filteredConf)} /></TableHead>
+                        <TableHead>Tanggal</TableHead><TableHead>Nama</TableHead><TableHead>Program</TableHead><TableHead className="text-right">Nominal</TableHead><TableHead>Lampiran</TableHead><TableHead className="text-right">Aksi</TableHead>
+                      </TableRow></TableHeader>
+                      <TableBody>
+                        {filteredConf.map((cf) => (
+                          <TableRow key={cf.id} className={selConf.includes(cf.id) ? 'bg-brand-greenlight/40' : ''}>
+                            <TableCell><Checkbox checked={selConf.includes(cf.id)} onCheckedChange={() => toggleSel('conf', cf.id)} /></TableCell>
+                            <TableCell className="text-sm whitespace-nowrap">{new Date(cf.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</TableCell>
+                            <TableCell className="text-sm"><div className="font-medium">{cf.name}</div><div className="text-xs text-muted-foreground">{cf.whatsapp}</div></TableCell>
+                            <TableCell className="text-sm max-w-[160px] truncate">{cf.program || '-'}</TableCell>
+                            <TableCell className="text-right text-sm font-semibold whitespace-nowrap">{formatRupiah(cf.amount)}</TableCell>
+                            <TableCell>{cf.proof_image ? <a href={cf.proof_image} target="_blank" rel="noopener noreferrer"><img src={cf.proof_image} alt="resi" className="w-10 h-10 rounded object-cover" /></a> : <span className="text-xs text-muted-foreground">Tidak ada</span>}</TableCell>
+                            <TableCell className="text-right"><Button size="sm" variant="ghost" className="rounded-lg" disabled={!cf.proof_image} onClick={() => downloadProof(cf)}><Download className="w-4 h-4" /></Button></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredConf.map((cf) => (
+                    <Card key={cf.id} className={`rounded-2xl border bg-white overflow-hidden ${selConf.includes(cf.id) ? 'border-brand-green ring-1 ring-brand-green' : 'border-border'}`}>
+                      <div className="relative">
+                        <div className="absolute top-2 left-2 z-10 bg-white/90 rounded-md p-1"><Checkbox checked={selConf.includes(cf.id)} onCheckedChange={() => toggleSel('conf', cf.id)} /></div>
+                        {cf.proof_image ? (
+                          <a href={cf.proof_image} target="_blank" rel="noopener noreferrer"><img src={cf.proof_image} alt="bukti" className="w-full h-40 object-cover" /></a>
+                        ) : (
+                          <div className="w-full h-40 bg-brand-slatebg flex items-center justify-center text-muted-foreground text-sm"><FileCheck2 className="w-6 h-6 mr-2" />Tanpa lampiran</div>
+                        )}
+                        {cf.proof_image && <button onClick={() => downloadProof(cf)} className="absolute top-2 right-2 z-10 bg-white/90 hover:bg-white rounded-lg p-2 shadow-sm" title="Unduh resi"><Download className="w-4 h-4 text-brand-ink" /></button>}
+                      </div>
+                      <div className="p-4 space-y-1.5">
+                        <div className="flex justify-between items-start"><span className="font-semibold text-brand-ink">{cf.name}</span><span className="font-bold text-brand-green">{formatRupiah(cf.amount)}</span></div>
+                        <p className="text-xs text-muted-foreground">WA: {cf.whatsapp}</p>
+                        <p className="text-xs text-muted-foreground">Bank: {cf.bank || '-'} &bull; Program: {cf.program || '-'}</p>
+                        {cf.note && <p className="text-sm text-brand-ink mt-1 italic">&ldquo;{cf.note}&rdquo;</p>}
+                        <p className="text-[11px] text-muted-foreground pt-1">{new Date(cf.created_at).toLocaleString('id-ID')}</p>
                       </div>
                     </Card>
                   ))}
                 </div>
-              )
-            ) : (
-              <Card className="rounded-2xl border-border bg-white overflow-hidden">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-10"><Checkbox checked={filteredDon.length > 0 && selDon.length === filteredDon.length} onCheckedChange={() => toggleAll('don', filteredDon)} /></TableHead>
-                        <TableHead>Tanggal</TableHead>
-                        <TableHead>Donatur</TableHead>
-                        <TableHead>Program</TableHead>
-                        <TableHead className="text-right">Nominal</TableHead>
-                        <TableHead className="text-right">Total+Kode</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Aksi</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredDon.length === 0 ? (
-                        <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-10">Tidak ada donasi sesuai filter.</TableCell></TableRow>
-                      ) : filteredDon.map((d) => (
-                        <TableRow key={d.id} className={selDon.includes(d.id) ? 'bg-brand-greenlight/40' : ''}>
-                          <TableCell><Checkbox checked={selDon.includes(d.id)} onCheckedChange={() => toggleSel('don', d.id)} /></TableCell>
-                          <TableCell className="text-sm whitespace-nowrap">{new Date(d.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</TableCell>
-                          <TableCell className="text-sm"><div className="font-medium">{d.is_anonymous ? 'Hamba Allah' : d.donor_name}</div><div className="text-xs text-muted-foreground">{d.donor_whatsapp}</div></TableCell>
-                          <TableCell className="text-sm max-w-[180px] truncate">{d.campaign_title}</TableCell>
-                          <TableCell className="text-right text-sm font-semibold whitespace-nowrap">{formatRupiah(d.amount)}</TableCell>
-                          <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap">{formatRupiah(d.total_amount)}</TableCell>
-                          <TableCell>{d.status === 'verified' ? <Badge className="bg-brand-greenlight text-brand-green border-0 hover:bg-brand-greenlight">Terverifikasi</Badge> : <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-0 hover:bg-amber-100">Pending</Badge>}</TableCell>
-                          <TableCell className="text-right">
-                            {d.status === 'verified' ? (
-                              <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" disabled={busy === d.id} onClick={() => verify(d.id, 'pending')}><RotateCcw className="w-4 h-4 mr-1" />Batalkan</Button>
-                            ) : (
-                              <Button size="sm" className="rounded-lg" disabled={busy === d.id} onClick={() => verify(d.id, 'verified')}>{busy === d.id ? <Loader2 className="w-4 h-4 animate-spin" /> : (<><CheckCircle2 className="w-4 h-4 mr-1" />Verifikasi</>)}</Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </Card>
-            )}
-          </TabsContent>
-
-          <TabsContent value="konfirmasi" className="mt-4 space-y-4">
-            <Card className="rounded-2xl border-border bg-white p-4">
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative flex-1 min-w-[200px]">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama, program, atau WA..." className="pl-9 rounded-xl" />
-                  </div>
-                  <Select value={sortBy} onValueChange={setSortBy}>
-                    <SelectTrigger className="w-[165px] rounded-xl"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="newest">Terbaru</SelectItem>
-                      <SelectItem value="oldest">Terlama</SelectItem>
-                      <SelectItem value="amount_desc">Nominal Tertinggi</SelectItem>
-                      <SelectItem value="amount_asc">Nominal Terendah</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={timeFilter} onValueChange={setTimeFilter}>
-                    <SelectTrigger className="w-[140px] rounded-xl"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Semua Waktu</SelectItem>
-                      <SelectItem value="week">7 Hari</SelectItem>
-                      <SelectItem value="month">30 Hari</SelectItem>
-                      <SelectItem value="year">1 Tahun</SelectItem>
-                      <SelectItem value="custom">Kustom</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <div className="flex rounded-xl border border-border overflow-hidden">
-                    <button onClick={() => setConfView('gallery')} className={`px-3 h-9 flex items-center ${confView === 'gallery' ? 'bg-brand-green text-white' : 'text-muted-foreground hover:bg-brand-slatebg'}`} title="Galeri"><LayoutGrid className="w-4 h-4" /></button>
-                    <button onClick={() => setConfView('table')} className={`px-3 h-9 flex items-center ${confView === 'table' ? 'bg-brand-green text-white' : 'text-muted-foreground hover:bg-brand-slatebg'}`} title="Tabel"><ListIcon className="w-4 h-4" /></button>
-                  </div>
-                </div>
-                {timeFilter === 'custom' && (
-                  <div className="flex items-center gap-2 text-sm flex-wrap">
-                    <span className="text-muted-foreground">Dari</span>
-                    <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded-xl w-auto" />
-                    <span className="text-muted-foreground">s/d</span>
-                    <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded-xl w-auto" />
-                  </div>
-                )}
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <span className="text-xs text-muted-foreground">Menampilkan {filteredConf.length} dari {confs.length} konfirmasi{selConf.length > 0 ? ` • ${selConf.length} dipilih` : ''}</span>
-                  <div className="flex gap-2 items-center">
-                    {filteredConf.length > 0 && <Button size="sm" variant="ghost" className="rounded-lg text-xs" onClick={() => toggleAll('conf', filteredConf)}>{selConf.length === filteredConf.length ? 'Batal pilih' : 'Pilih semua'}</Button>}
-                    {selConf.length > 0 && (<>
-                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => bulkDownloadProofs(selConf)}><ImageDown className="w-4 h-4 mr-1" />Unduh Resi ({selConf.length})</Button>
-                      <Button size="sm" variant="outline" className="rounded-lg text-red-600 border-red-200 hover:bg-red-50" disabled={bulkBusy} onClick={() => bulkDelete('confirmations', selConf, setSelConf)}>{bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}Hapus ({selConf.length})</Button>
-                    </>)}
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            {filteredConf.length === 0 ? (
-              <Card className="rounded-2xl border-border bg-white p-10 text-center text-muted-foreground">Tidak ada konfirmasi sesuai filter.</Card>
-            ) : confView === 'table' ? (
-              <Card className="rounded-2xl border-border bg-white overflow-hidden">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader><TableRow>
-                      <TableHead className="w-10"><Checkbox checked={selConf.length === filteredConf.length} onCheckedChange={() => toggleAll('conf', filteredConf)} /></TableHead>
-                      <TableHead>Tanggal</TableHead><TableHead>Nama</TableHead><TableHead>Program</TableHead><TableHead className="text-right">Nominal</TableHead><TableHead>Lampiran</TableHead><TableHead className="text-right">Aksi</TableHead>
-                    </TableRow></TableHeader>
-                    <TableBody>
-                      {filteredConf.map((cf) => (
-                        <TableRow key={cf.id} className={selConf.includes(cf.id) ? 'bg-brand-greenlight/40' : ''}>
-                          <TableCell><Checkbox checked={selConf.includes(cf.id)} onCheckedChange={() => toggleSel('conf', cf.id)} /></TableCell>
-                          <TableCell className="text-sm whitespace-nowrap">{new Date(cf.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</TableCell>
-                          <TableCell className="text-sm"><div className="font-medium">{cf.name}</div><div className="text-xs text-muted-foreground">{cf.whatsapp}</div></TableCell>
-                          <TableCell className="text-sm max-w-[160px] truncate">{cf.program || '-'}</TableCell>
-                          <TableCell className="text-right text-sm font-semibold whitespace-nowrap">{formatRupiah(cf.amount)}</TableCell>
-                          <TableCell>{cf.proof_image ? <a href={cf.proof_image} target="_blank" rel="noopener noreferrer"><img src={cf.proof_image} alt="resi" className="w-10 h-10 rounded object-cover" /></a> : <span className="text-xs text-muted-foreground">Tidak ada</span>}</TableCell>
-                          <TableCell className="text-right"><Button size="sm" variant="ghost" className="rounded-lg" disabled={!cf.proof_image} onClick={() => downloadProof(cf)}><Download className="w-4 h-4" /></Button></TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </Card>
-            ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredConf.map((cf) => (
-                  <Card key={cf.id} className={`rounded-2xl border bg-white overflow-hidden ${selConf.includes(cf.id) ? 'border-brand-green ring-1 ring-brand-green' : 'border-border'}`}>
-                    <div className="relative">
-                      <div className="absolute top-2 left-2 z-10 bg-white/90 rounded-md p-1"><Checkbox checked={selConf.includes(cf.id)} onCheckedChange={() => toggleSel('conf', cf.id)} /></div>
-                      {cf.proof_image ? (
-                        <a href={cf.proof_image} target="_blank" rel="noopener noreferrer"><img src={cf.proof_image} alt="bukti" className="w-full h-40 object-cover" /></a>
-                      ) : (
-                        <div className="w-full h-40 bg-brand-slatebg flex items-center justify-center text-muted-foreground text-sm"><FileCheck2 className="w-6 h-6 mr-2" />Tanpa lampiran</div>
-                      )}
-                      {cf.proof_image && <button onClick={() => downloadProof(cf)} className="absolute top-2 right-2 z-10 bg-white/90 hover:bg-white rounded-lg p-2 shadow-sm" title="Unduh resi"><Download className="w-4 h-4 text-brand-ink" /></button>}
-                    </div>
-                    <div className="p-4 space-y-1.5">
-                      <div className="flex justify-between items-start"><span className="font-semibold text-brand-ink">{cf.name}</span><span className="font-bold text-brand-green">{formatRupiah(cf.amount)}</span></div>
-                      <p className="text-xs text-muted-foreground">WA: {cf.whatsapp}</p>
-                      <p className="text-xs text-muted-foreground">Bank: {cf.bank || '-'} &bull; Program: {cf.program || '-'}</p>
-                      {cf.note && <p className="text-sm text-brand-ink mt-1 italic">&ldquo;{cf.note}&rdquo;</p>}
-                      <p className="text-[11px] text-muted-foreground pt-1">{new Date(cf.created_at).toLocaleString('id-ID')}</p>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="kurban" className="mt-4">
-            <Card className="rounded-2xl border-border bg-white p-6">
-              <div className="flex items-start gap-3 mb-5">
-                <div className="w-11 h-11 rounded-xl bg-brand-greenlight text-brand-green flex items-center justify-center shrink-0"><PawPrint className="w-6 h-6" /></div>
-                <div>
-                  <h3 className="font-heading font-bold text-lg text-brand-ink">Kelola Kuota Kurban</h3>
-                  <p className="text-sm text-muted-foreground">Atur target kuota tiap musim &amp; jumlah terisi awal (baseline). Sisa kuota di halaman Kurban otomatis dihitung dari baseline + donasi masuk.</p>
-                </div>
-              </div>
-              {kurban.length === 0 ? (
-                <p className="text-muted-foreground text-sm py-6 text-center">Memuat data kuota...</p>
-              ) : (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-12 gap-3 px-1 text-xs font-medium text-muted-foreground">
-                    <div className="col-span-6 md:col-span-6">Jenis Hewan</div>
-                    <div className="col-span-3 md:col-span-3">Target Kuota</div>
-                    <div className="col-span-3 md:col-span-3">Terisi (Baseline)</div>
-                  </div>
-                  {kurban.map((o, idx) => (
-                    <div key={o.key} className="grid grid-cols-12 gap-3 items-center rounded-xl border border-border p-3">
-                      <div className="col-span-6 md:col-span-6">
-                        <p className="font-semibold text-brand-ink text-sm">{o.name}</p>
-                        <p className="text-xs text-muted-foreground">{formatRupiah(o.price)} / {o.unit}</p>
-                      </div>
-                      <div className="col-span-3 md:col-span-3">
-                        <Input type="number" min="0" value={o.quota} onChange={(e) => setKurbanField(idx, 'quota', e.target.value)} className="rounded-lg" />
-                      </div>
-                      <div className="col-span-3 md:col-span-3">
-                        <Input type="number" min="0" value={o.sold_base} onChange={(e) => setKurbanField(idx, 'sold_base', e.target.value)} className="rounded-lg" />
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex justify-end pt-2">
-                    <Button onClick={saveKurban} disabled={kurbanSaving} className="rounded-xl">{kurbanSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}Simpan Perubahan</Button>
-                  </div>
-                </div>
               )}
-            </Card>
-          </TabsContent>
+            </TabsContent>
 
-          <TabsContent value="wa" className="mt-4">
-            <Card className="rounded-2xl border-border bg-white p-6 space-y-6">
-              <div className="flex items-start gap-3">
-                <div className="w-11 h-11 rounded-xl bg-[#25D366]/15 text-[#128C4B] flex items-center justify-center shrink-0"><MessageSquare className="w-6 h-6" /></div>
-                <div className="flex-1">
-                  <h3 className="font-heading font-bold text-lg text-brand-ink">Pengaturan WhatsApp Otomatis</h3>
-                  <p className="text-sm text-muted-foreground">Kelola pesan ucapan terima kasih &amp; notifikasi WhatsApp. {wa.token_configured ? <span className="text-brand-green font-medium">Terhubung ke Fonnte \u2713</span> : <span className="text-red-500 font-medium">Token Fonnte belum dikonfigurasi</span>}</p>
+            <TabsContent value="kurban" className="mt-4">
+              <Card className="rounded-2xl border-border bg-white p-6">
+                <div className="flex items-start gap-3 mb-5">
+                  <div className="w-11 h-11 rounded-xl bg-brand-greenlight text-brand-green flex items-center justify-center shrink-0"><PawPrint className="w-6 h-6" /></div>
+                  <div>
+                    <h3 className="font-heading font-bold text-lg text-brand-ink">Kelola Kuota Kurban</h3>
+                    <p className="text-sm text-muted-foreground">Atur target kuota tiap musim &amp; jumlah terisi awal (baseline). Sisa kuota di halaman Kurban otomatis dihitung dari baseline + donasi masuk.</p>
+                  </div>
                 </div>
-              </div>
-
-              <div>
-                <Label className="text-sm font-semibold">Template Pesan Ucapan Terima Kasih (dikirim saat donasi diverifikasi)</Label>
-                <Textarea value={wa.thank_you_template} onChange={(e) => setWa((w) => ({ ...w, thank_you_template: e.target.value }))} rows={9} className="rounded-xl mt-2 text-sm" placeholder="Tulis pesan ucapan terima kasih..." />
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="text-muted-foreground">Klik untuk sisipkan:</span>
-                  {['{name}', '{amount}', '{program}', '{total}'].map((p) => (
-                    <button key={p} type="button" onClick={() => setWa((w) => ({ ...w, thank_you_template: (w.thank_you_template || '') + p }))} className="px-2 py-0.5 rounded bg-brand-greenlight text-brand-green font-mono hover:bg-brand-green hover:text-white transition">{p}</button>
-                  ))}
-                  <span className="text-muted-foreground">— apit teks dengan *bintang* untuk cetak tebal di WhatsApp</span>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-border p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <Bell className="w-5 h-5 text-brand-green mt-0.5" />
-                    <div>
-                      <p className="font-semibold text-brand-ink text-sm">Notifikasi WhatsApp ke Admin</p>
-                      <p className="text-xs text-muted-foreground">Kirim WA ke admin setiap ada donasi/konfirmasi baru agar verifikasi lebih cepat.</p>
+                {kurban.length === 0 ? (
+                  <p className="text-muted-foreground text-sm py-6 text-center">Memuat data kuota...</p>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-12 gap-3 px-1 text-xs font-medium text-muted-foreground">
+                      <div className="col-span-6 md:col-span-6">Jenis Hewan</div>
+                      <div className="col-span-3 md:col-span-3">Target Kuota</div>
+                      <div className="col-span-3 md:col-span-3">Terisi (Baseline)</div>
+                    </div>
+                    {kurban.map((o, idx) => (
+                      <div key={o.key} className="grid grid-cols-12 gap-3 items-center rounded-xl border border-border p-3">
+                        <div className="col-span-6 md:col-span-6">
+                          <p className="font-semibold text-brand-ink text-sm">{o.name}</p>
+                          <p className="text-xs text-muted-foreground">{formatRupiah(o.price)} / {o.unit}</p>
+                        </div>
+                        <div className="col-span-3 md:col-span-3">
+                          <Input type="number" min="0" value={o.quota} onChange={(e) => setKurbanField(idx, 'quota', e.target.value)} className="rounded-lg" />
+                        </div>
+                        <div className="col-span-3 md:col-span-3">
+                          <Input type="number" min="0" value={o.sold_base} onChange={(e) => setKurbanField(idx, 'sold_base', e.target.value)} className="rounded-lg" />
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex justify-end pt-2">
+                      <Button onClick={saveKurban} disabled={kurbanSaving} className="rounded-xl">{kurbanSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}Simpan Perubahan</Button>
                     </div>
                   </div>
-                  <Switch checked={wa.admin_notify_enabled} onCheckedChange={(v) => setWa((w) => ({ ...w, admin_notify_enabled: v }))} />
-                </div>
-                {wa.admin_notify_enabled && (
-                  <div className="mt-3">
-                    <Label className="text-sm">Nomor WA Admin (penerima notifikasi)</Label>
-                    <Input value={wa.admin_number} onChange={(e) => setWa((w) => ({ ...w, admin_number: e.target.value }))} className="rounded-xl mt-1 max-w-xs" placeholder="08xxxxxxxxxx" />
-                    <p className="text-[11px] text-muted-foreground mt-1">Sebaiknya berbeda dari nomor perangkat Fonnte pengirim (WhatsApp tidak bisa mengirim ke nomor sendiri).</p>
-                  </div>
                 )}
-              </div>
+              </Card>
+            </TabsContent>
 
-              <div className="flex justify-end">
-                <Button onClick={saveWaSettings} disabled={waSaving} className="rounded-xl">{waSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}Simpan Pengaturan</Button>
-              </div>
-
-              <div className="rounded-xl bg-brand-slatebg p-4">
-                <Label className="text-sm font-semibold">Kirim Pesan Tes</Label>
-                <p className="text-xs text-muted-foreground mb-2">Pastikan integrasi berjalan dengan mengirim WA percobaan.</p>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Input value={waTestNumber} onChange={(e) => setWaTestNumber(e.target.value)} className="rounded-xl bg-white" placeholder="Nomor tujuan tes, mis. 0851xxxxxxx" />
-                  <Button variant="outline" onClick={testWa} disabled={waTestBusy || !wa.token_configured} className="rounded-xl shrink-0"><Send className="w-4 h-4 mr-2" />{waTestBusy ? 'Mengirim...' : 'Kirim Tes'}</Button>
+            <TabsContent value="wa" className="mt-4">
+              <Card className="rounded-2xl border-border bg-white p-6 space-y-6">
+                <div className="flex items-start gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-[#25D366]/15 text-[#128C4B] flex items-center justify-center shrink-0"><MessageSquare className="w-6 h-6" /></div>
+                  <div className="flex-1">
+                    <h3 className="font-heading font-bold text-lg text-brand-ink">Pengaturan WhatsApp Otomatis</h3>
+                    <p className="text-sm text-muted-foreground">Kelola pesan ucapan terima kasih &amp; notifikasi WhatsApp. {wa.token_configured ? <span className="text-brand-green font-medium">Terhubung ke Fonnte \u2713</span> : <span className="text-red-500 font-medium">Token Fonnte belum dikonfigurasi</span>}</p>
+                  </div>
                 </div>
-              </div>
-            </Card>
-          </TabsContent>
 
-          <TabsContent value="program" className="mt-0">
-            <CampaignManager adminKey={key} />
-          </TabsContent>
+                <div>
+                  <Label className="text-sm font-semibold">Template Pesan Ucapan Terima Kasih (dikirim saat donasi diverifikasi)</Label>
+                  <Textarea value={wa.thank_you_template} onChange={(e) => setWa((w) => ({ ...w, thank_you_template: e.target.value }))} rows={9} className="rounded-xl mt-2 text-sm" placeholder="Tulis pesan ucapan terima kasih..." />
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Klik untuk sisipkan:</span>
+                    {['{name}', '{amount}', '{program}', '{total}'].map((p) => (
+                      <button key={p} type="button" onClick={() => setWa((w) => ({ ...w, thank_you_template: (w.thank_you_template || '') + p }))} className="px-2 py-0.5 rounded bg-brand-greenlight text-brand-green font-mono hover:bg-brand-green hover:text-white transition">{p}</button>
+                    ))}
+                    <span className="text-muted-foreground">— apit teks dengan *bintang* untuk cetak tebal di WhatsApp</span>
+                  </div>
+                </div>
 
-          <TabsContent value="slider" className="mt-0">
-            <SliderManager adminKey={key} />
-          </TabsContent>
+                <div className="rounded-xl border border-border p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <Bell className="w-5 h-5 text-brand-green mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-brand-ink text-sm">Notifikasi WhatsApp ke Admin</p>
+                        <p className="text-xs text-muted-foreground">Kirim WA ke admin setiap ada donasi/konfirmasi baru agar verifikasi lebih cepat.</p>
+                      </div>
+                    </div>
+                    <Switch checked={wa.admin_notify_enabled} onCheckedChange={(v) => setWa((w) => ({ ...w, admin_notify_enabled: v }))} />
+                  </div>
+                  {wa.admin_notify_enabled && (
+                    <div className="mt-3">
+                      <Label className="text-sm">Nomor WA Admin (penerima notifikasi)</Label>
+                      <Input value={wa.admin_number} onChange={(e) => setWa((w) => ({ ...w, admin_number: e.target.value }))} className="rounded-xl mt-1 max-w-xs" placeholder="08xxxxxxxxxx" />
+                      <p className="text-[11px] text-muted-foreground mt-1">Sebaiknya berbeda dari nomor perangkat Fonnte pengirim (WhatsApp tidak bisa mengirim ke nomor sendiri).</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={saveWaSettings} disabled={waSaving} className="rounded-xl">{waSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}Simpan Pengaturan</Button>
+                </div>
+
+                <div className="rounded-xl bg-brand-slatebg p-4">
+                  <Label className="text-sm font-semibold">Kirim Pesan Tes</Label>
+                  <p className="text-xs text-muted-foreground mb-2">Pastikan integrasi berjalan dengan mengirim WA percobaan.</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input value={waTestNumber} onChange={(e) => setWaTestNumber(e.target.value)} className="rounded-xl bg-white" placeholder="Nomor tujuan tes, mis. 0851xxxxxxx" />
+                    <Button variant="outline" onClick={testWa} disabled={waTestBusy || !wa.token_configured} className="rounded-xl shrink-0"><Send className="w-4 h-4 mr-2" />{waTestBusy ? 'Mengirim...' : 'Kirim Tes'}</Button>
+                  </div>
+                </div>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="program" className="mt-0">
+              <CampaignManager adminKey={key} />
+            </TabsContent>
+
+            <TabsContent value="slider" className="mt-0">
+              <SliderManager adminKey={key} />
+            </TabsContent>
+
+            <TabsContent value="news" className="mt-0">
+              <NewsManager adminKey={key} />
+            </TabsContent>
           </div>
         </Tabs>
       </div>
