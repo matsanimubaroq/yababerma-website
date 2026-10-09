@@ -502,7 +502,7 @@ function renderWaTemplate(tpl, donation) {
 async function fonnteSend(target, message) {
   const token = process.env.FONNTE_TOKEN
   if (!token || !target || !message) return false
-  let value = String(target).trim().replace(/[\s().+-]/g, '')
+  let value = String(target || '').trim().replace(/[\s().+-]/g, '')
   if (value.startsWith('62')) value = '0' + value.slice(2)
   if (!/^08\d{7,14}$/.test(value)) { console.error('Fonnte: nomor tidak valid:', target); return false }
   try {
