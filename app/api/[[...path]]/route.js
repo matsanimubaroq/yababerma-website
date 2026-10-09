@@ -1046,6 +1046,9 @@ async function handleRoute(request, { params }) {
       // ---- Program/Campaign CMS ----
       if (route === '/admin/campaigns' && method === 'GET') {
         const items = await db.collection('campaigns').find({}).sort({ created_at: -1 }).limit(500).toArray()
+        if (items.length === 0) {
+          return handleCORS(NextResponse.json(cleanArr(seedCampaigns())))
+        }
         return handleCORS(NextResponse.json(cleanArr(items)))
       }
       // Single campaign (incl. drafts) for admin preview
@@ -1133,6 +1136,9 @@ async function handleRoute(request, { params }) {
       // ---- News/Articles CMS ----
       if (route === '/admin/news' && method === 'GET') {
         const items = await db.collection('news').find({}).sort({ createdAt: -1 }).limit(500).toArray()
+        if (items.length === 0) {
+          return handleCORS(NextResponse.json(cleanArr(seedNews())))
+        }
         return handleCORS(NextResponse.json(cleanArr(items)))
       }
       if (route === '/admin/news' && method === 'POST') {
@@ -1181,7 +1187,7 @@ async function handleRoute(request, { params }) {
   } catch (error) {
     console.error('API Error:', route, error)
     // Most crashes on a DB-less deployment are `db.collection` on null → tell the caller clearly.
-    if (!dbPromise && /Cannot read propert(y|ies) of null/.test(String(error))) return noDbResponse()
+    if (/Cannot read propert(y|ies) of null/.test(String(error))) return noDbResponse()
     return handleCORS(NextResponse.json({ error: 'Internal server error', detail: String(error?.message || error) }, { status: 500 }))
   }
 }
