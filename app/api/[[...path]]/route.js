@@ -904,7 +904,7 @@ async function handleRoute(request, { params }) {
       return handleCORS(NextResponse.json({ ok: true }))
     }
 
-    if (route.startsWith('/admin')) {
+    if (String(route || '').startsWith('/admin')) {
       const provided = String(request.headers.get('x-admin-key') || '').trim()
       if (!(await isValidAdminKey(db, provided))) return handleCORS(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
 
