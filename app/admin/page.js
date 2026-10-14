@@ -19,7 +19,8 @@ import { formatRupiah } from '@/lib/site-data';
 import CampaignManager from '@/components/admin/campaign-manager';
 import SliderManager from '@/components/admin/slider-manager';
 import NewsManager from '@/components/admin/news-manager';
-import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint, Search, Trash2, LayoutGrid, List as ListIcon, BarChart3, ImageDown, SlidersHorizontal, Eye, EyeOff, Mail, ArrowLeft, KeyRound, MessageSquare, Bell, Send, Newspaper } from 'lucide-react';
+import { TestimonialManager, CommunityManager, PartnerManager, AuthorManager } from '@/components/admin/content-managers';
+import { ShieldCheck, LogIn, CheckCircle2, RotateCcw, RefreshCw, Wallet, Clock, FileCheck2, Users, Loader2, LogOut, Download, Save, PawPrint, Search, Trash2, LayoutGrid, List as ListIcon, BarChart3, ImageDown, SlidersHorizontal, Eye, EyeOff, Mail, ArrowLeft, KeyRound, MessageSquare, Bell, Send, Newspaper, Quote, Handshake, UsersRound, PenLine } from 'lucide-react';
 
 const CHART_COLORS = ['#00A651', '#0082C8', '#F59E0B', '#8B5CF6', '#EF4444', '#14B8A6', '#EC4899', '#64748B'];
 
@@ -369,6 +370,10 @@ export default function AdminPage() {
         { value: 'slider', label: 'Slider Beranda', icon: SlidersHorizontal },
         { value: 'program', label: 'Program & Donasi', icon: LayoutGrid },
         { value: 'news', label: 'Berita & Artikel', icon: Newspaper },
+        { value: 'authors', label: 'Penulis', icon: PenLine },
+        { value: 'testimonials', label: 'Testimoni', icon: Quote },
+        { value: 'partners', label: 'Partner Kebaikan', icon: Handshake },
+        { value: 'communities', label: 'Komunitas', icon: UsersRound },
       ]
     },
     {
@@ -824,6 +829,22 @@ export default function AdminPage() {
 
             <TabsContent value="news" className="mt-0">
               <NewsManager adminKey={key} />
+            </TabsContent>
+
+            <TabsContent value="authors" className="mt-0">
+              <AuthorManager adminKey={key} />
+            </TabsContent>
+
+            <TabsContent value="testimonials" className="mt-0">
+              <TestimonialManager adminKey={key} />
+            </TabsContent>
+
+            <TabsContent value="partners" className="mt-0">
+              <PartnerManager adminKey={key} />
+            </TabsContent>
+
+            <TabsContent value="communities" className="mt-0">
+              <CommunityManager adminKey={key} />
             </TabsContent>
           </div>
         </Tabs>

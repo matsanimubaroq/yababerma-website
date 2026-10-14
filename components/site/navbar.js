@@ -28,9 +28,9 @@ export default function Navbar() {
           </div>
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-1">
+        <nav className="hidden xl:flex items-center gap-1">
           {NAV_ITEMS.map((n) => (
-            <Link key={n.href} href={n.href} className={`px-3 py-2 rounded-lg text-sm font-medium transition ${isActive(n.href) ? 'text-brand-green bg-brand-greenlight' : 'text-brand-ink hover:text-brand-green hover:bg-muted'}`}>{n.label}</Link>
+            <Link key={n.href} href={n.href} className={`px-2 2xl:px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${isActive(n.href) ? 'text-brand-green bg-brand-greenlight' : 'text-brand-ink hover:text-brand-green hover:bg-muted'}`}>{n.label}</Link>
           ))}
         </nav>
 
@@ -62,7 +62,7 @@ export default function Navbar() {
           ))}
 
           <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild><Button variant="outline" size="icon" className="lg:hidden rounded-xl"><Menu className="w-5 h-5" /></Button></SheetTrigger>
+            <SheetTrigger asChild><Button variant="outline" size="icon" className="xl:hidden rounded-xl"><Menu className="w-5 h-5" /></Button></SheetTrigger>
             <SheetContent side="right" className="w-72">
               <SheetTitle className="sr-only">Menu Navigasi</SheetTitle>
               <div className="flex items-center gap-2 mb-6">

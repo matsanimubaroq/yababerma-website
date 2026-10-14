@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Plus, Pencil, Trash2, Loader2, Newspaper, CalendarClock, User, Save, Eye } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, Loader2, Newspaper, CalendarClock, User, Save, Eye, UserPlus, Images, X } from 'lucide-react';
 import MediaUpload from '@/components/admin/media-upload';
 import {
   STATUS_OPTIONS, SORT_OPTIONS, StatusBadge, DbBanner, isScheduled, formatDate,
@@ -21,9 +21,10 @@ import {
 const BASE_CATEGORIES = ['Berita', 'Artikel', 'Kisah Inspiratif', 'Laporan Kegiatan'];
 
 const EMPTY = {
-  title: '', excerpt: '', content: '', image: '', category: 'Berita', author: 'Admin',
-  tags: '', status: 'Draft', publishedAt: '',
+  title: '', excerpt: '', content: '', image: '', image_caption: '', gallery: [], category: 'Berita',
+  author: 'Admin', author_id: '', tags: '', status: 'Draft', publishedAt: '',
 };
+const NO_PROFILE = '__none'; // Radix Select cannot use '' as an item value
 
 export default function NewsManager({ adminKey }) {
   const [items, setItems] = useState(null);
@@ -38,7 +39,17 @@ export default function NewsManager({ adminKey }) {
   const [catF, setCatF] = useState('all');
   const [authorF, setAuthorF] = useState('all');
   const [sort, setSort] = useState('newest');
+  const [authorProfiles, setAuthorProfiles] = useState([]);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quick, setQuick] = useState({ name: '', degree: '' });
+  const [quickBusy, setQuickBusy] = useState(false);
   const readOnly = db === false;
+
+  const loadAuthors = useCallback(async () => {
+    const { ok, data } = await adminFetch('/api/admin/authors', adminKey);
+    if (ok) setAuthorProfiles(Array.isArray(data.items) ? data.items : []);
+  }, [adminKey]);
+  useEffect(() => { if (adminKey) loadAuthors(); }, [adminKey, loadAuthors]);
 
   const load = useCallback(async () => {
     const { ok, data } = await adminFetch('/api/admin/news', adminKey);
@@ -54,13 +65,19 @@ export default function NewsManager({ adminKey }) {
   const categories = useMemo(() => [...new Set([...BASE_CATEGORIES, ...(items || []).map((i) => i.category).filter(Boolean)])], [items]);
   const authors = useMemo(() => [...new Set((items || []).map((i) => i.author).filter(Boolean))].sort(), [items]);
 
-  const openAdd = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
+  const openAdd = () => {
+    const first = authorProfiles.find((a) => a.status === 'Active');
+    setEditing(null);
+    setForm({ ...EMPTY, author_id: first?.id || '', author: first?.display_name || 'Admin' });
+    setOpen(true);
+  };
   const openEdit = (item) => {
     setEditing(item);
     setForm({
       title: item.title || '', excerpt: item.excerpt || '', content: item.content || '', image: item.image || '',
-      category: item.category || 'Berita', author: item.author || 'Admin', tags: (item.tags || []).join(', '),
-      status: item.status || 'Draft', publishedAt: toLocalInput(item.publishedAt),
+      category: item.category || 'Berita', author: item.author || 'Admin', author_id: item.author_id || item.author_profile?.id || '',
+      image_caption: item.image_caption || '', gallery: Array.isArray(item.gallery) ? item.gallery : [],
+      tags: (item.tags || []).join(', '), status: item.status || 'Draft', publishedAt: toLocalInput(item.publishedAt),
     });
     setOpen(true);
   };
@@ -96,6 +113,25 @@ export default function NewsManager({ adminKey }) {
     toast.success('Berita dihapus');
     load();
   };
+
+  const addAuthor = async () => {
+    if (!quick.name.trim()) return toast.error('Nama penulis wajib diisi');
+    setQuickBusy(true);
+    const { ok, data } = await adminFetch('/api/admin/authors', adminKey, { method: 'POST', body: { name: quick.name, degree: quick.degree, status: 'Active' } });
+    setQuickBusy(false);
+    if (!ok) return toast.error(data.error || 'Gagal menambah penulis');
+    await loadAuthors();
+    set({ author_id: data.id, author: data.display_name });
+    setQuick({ name: '', degree: '' });
+    setQuickOpen(false);
+    toast.success('Penulis ditambahkan. Lengkapi profilnya di menu Penulis.');
+  };
+
+  const addPhoto = (url) => { if (url) set({ gallery: [...form.gallery, { url, caption: '' }] }); };
+  const setPhoto = (i, patch) => set({ gallery: form.gallery.map((g, idx) => (idx === i ? { ...g, ...patch } : g)) });
+  const removePhoto = (i) => set({ gallery: form.gallery.filter((_, idx) => idx !== i) });
+  // Authors offered in the editor: active ones, plus the article's current author even if inactive.
+  const authorOptions = authorProfiles.filter((a) => a.status === 'Active' || a.id === form.author_id);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -230,9 +266,21 @@ export default function NewsManager({ adminKey }) {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Penulis</Label>
-                <Input list="yb-authors" value={form.author} onChange={(e) => set({ author: e.target.value })} placeholder="Nama penulis" className="rounded-xl" />
-                <datalist id="yb-authors">{authors.map((a) => <option key={a} value={a} />)}</datalist>
+                <div className="flex items-center justify-between">
+                  <Label>Penulis</Label>
+                  <button type="button" onClick={() => setQuickOpen(true)} className="text-xs text-brand-blue flex items-center gap-1 hover:underline"><UserPlus className="w-3.5 h-3.5" />Penulis baru</button>
+                </div>
+                <Select value={form.author_id || NO_PROFILE} onValueChange={(v) => {
+                  const a = authorProfiles.find((x) => x.id === v);
+                  set(a ? { author_id: a.id, author: a.display_name } : { author_id: '', author: form.author || 'Admin' });
+                }}>
+                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {authorOptions.map((a) => <SelectItem key={a.id} value={a.id}>{a.display_name}{a.status !== 'Active' ? ' (nonaktif)' : ''}</SelectItem>)}
+                    <SelectItem value={NO_PROFILE}>— Nama lain (tanpa profil) —</SelectItem>
+                  </SelectContent>
+                </Select>
+                {!form.author_id && <Input value={form.author} onChange={(e) => set({ author: e.target.value })} placeholder="Nama penulis" className="rounded-xl" />}
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>
@@ -253,8 +301,23 @@ export default function NewsManager({ adminKey }) {
               {tagPreview.length > 0 && <div className="flex flex-wrap gap-1">{tagPreview.map((t) => <span key={t} className="text-[11px] px-2 py-0.5 rounded-full bg-brand-greenlight text-brand-green">#{t}</span>)}</div>}
             </div>
             <div className="space-y-2">
-              <Label>Gambar Thumbnail</Label>
+              <Label>Foto Sampul</Label>
               <MediaUpload adminKey={adminKey} kind="image" value={form.image} onChange={(url) => set({ image: url })} />
+              <Input value={form.image_caption} onChange={(e) => set({ image_caption: e.target.value })} placeholder="Caption foto sampul (keterangan foto)" className="rounded-xl" />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5"><Images className="w-4 h-4 text-brand-green" />Galeri Foto Artikel</Label>
+              <p className="text-[11px] text-muted-foreground -mt-1">Tampil di bawah isi artikel, masing-masing dengan caption. Maksimal 20 foto.</p>
+              <div className="space-y-2">
+                {form.gallery.map((g, i) => (
+                  <div key={i} className="flex gap-2 items-start rounded-xl border border-border p-2 bg-muted/30">
+                    <img src={g.url} alt={g.caption || `Foto ${i + 1}`} className="w-20 h-16 object-cover rounded-lg border border-border shrink-0" />
+                    <Input value={g.caption} onChange={(e) => setPhoto(i, { caption: e.target.value })} placeholder={`Caption foto ${i + 1}`} className="rounded-lg" />
+                    <Button type="button" size="sm" variant="ghost" className="text-destructive shrink-0" onClick={() => removePhoto(i)}><X className="w-4 h-4" /></Button>
+                  </div>
+                ))}
+                {form.gallery.length < 20 && <div className="h-20"><MediaUpload adminKey={adminKey} kind="image" value="" onChange={addPhoto} compact /></div>}
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Ringkasan</Label>
@@ -271,6 +334,21 @@ export default function NewsManager({ adminKey }) {
               {busy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
               Simpan Berita
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={quickOpen} onOpenChange={setQuickOpen}>
+        <DialogContent className="rounded-2xl sm:max-w-md">
+          <DialogHeader><DialogTitle>Tambah Penulis Baru</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Nama Lengkap *</Label><Input value={quick.name} onChange={(e) => setQuick((q) => ({ ...q, name: e.target.value }))} placeholder="mis. Matsani Mubaroq" className="rounded-xl mt-1" /></div>
+            <div><Label>Gelar</Label><Input value={quick.degree} onChange={(e) => setQuick((q) => ({ ...q, degree: e.target.value }))} placeholder="mis. S.Sos." className="rounded-xl mt-1" /></div>
+            <p className="text-xs text-muted-foreground">Latar belakang, pendidikan, dan foto bisa dilengkapi nanti di menu Penulis.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="rounded-xl" onClick={() => setQuickOpen(false)} disabled={quickBusy}>Batal</Button>
+            <Button className="rounded-xl" onClick={addAuthor} disabled={quickBusy}>{quickBusy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <UserPlus className="w-4 h-4 mr-2" />}Tambah</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

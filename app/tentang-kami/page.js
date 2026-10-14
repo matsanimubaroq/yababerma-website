@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import CountUp from '@/components/site/count-up';
-import { ORG, BERKAH_VALUES, IMPACT_STATS, PARTNERS, LOCATIONS, WHATSAPP_ADMIN } from '@/lib/site-data';
+import { ORG, BERKAH_VALUES, IMPACT_STATS, LOCATIONS, WHATSAPP_ADMIN } from '@/lib/site-data';
+import PartnerMarquee from '@/components/site/partner-marquee';
 import { ShieldCheck, Eye, Compass, Flag, Building2, Users, Heart, CheckCircle2, Award, MapPin, Navigation, Phone } from 'lucide-react';
 
 const MISI = [
@@ -135,15 +136,14 @@ export default function TentangKamiPage() {
       </section>
 
       {/* PARTNERS */}
-      <section className="container py-16">
-        <div className="text-center max-w-2xl mx-auto mb-10">
+      <section className="py-16">
+        <div className="container text-center max-w-2xl mx-auto mb-10">
           <p className="text-brand-green font-semibold text-sm uppercase tracking-wide mb-2 flex items-center justify-center gap-2"><Award className="w-4 h-4" />Penghargaan &amp; Kemitraan</p>
-          <h2 className="text-2xl md:text-4xl font-extrabold text-brand-ink">Dipercaya oleh Mitra Strategis</h2>
+          <h2 className="text-2xl md:text-4xl font-extrabold text-brand-ink">Partner Kebaikan</h2>
+          <p className="text-muted-foreground mt-3">Media partner, partner kebaikan, dan komunitas yang berjalan bersama kami.</p>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {PARTNERS.map((p) => (
-            <div key={p} className="rounded-2xl border border-border bg-white h-24 flex items-center justify-center text-brand-ink font-heading font-bold text-center px-3 hover:border-brand-green/50 transition">{p}</div>
-          ))}
+        <div className="container">
+          <PartnerMarquee />
         </div>
       </section>
 

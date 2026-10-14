@@ -5,13 +5,16 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar, ArrowLeft, Share2, Newspaper, Loader2, Tag } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Calendar, ArrowLeft, Share2, Newspaper, Loader2, User, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
+import InitialsAvatar from '@/components/site/initials-avatar';
 
 export default function NewsDetailPage({ params }) {
     const { slug } = use(params);
     const [item, setItem] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [lightbox, setLightbox] = useState(null); // gallery photo being viewed
 
     useEffect(() => {
         fetch(`/api/news/${slug}`)
@@ -82,6 +85,14 @@ export default function NewsDetailPage({ params }) {
                                 <Calendar className="w-4 h-4" />
                                 {new Date(item.publishedAt || item.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
                             </span>
+                            {item.author && (
+                                <span className="text-muted-foreground text-sm flex items-center gap-1.5">
+                                    <User className="w-4 h-4" />
+                                    {item.author_profile
+                                        ? <Link href={`/penulis/${item.author_profile.slug}`} className="hover:text-brand-green hover:underline">{item.author}</Link>
+                                        : item.author}
+                                </span>
+                            )}
                         </div>
 
                         <h1 className="text-3xl md:text-5xl font-heading font-extrabold text-brand-ink leading-tight mb-8">
@@ -89,13 +100,16 @@ export default function NewsDetailPage({ params }) {
                         </h1>
 
                         {item.image && (
-                            <div className="aspect-video rounded-3xl overflow-hidden shadow-2xl mb-12 bg-brand-slatebg">
-                                <img
-                                    src={item.image}
-                                    alt={item.title}
-                                    className="w-full h-full object-cover"
-                                />
-                            </div>
+                            <figure className="mb-12">
+                                <div className="aspect-video rounded-3xl overflow-hidden shadow-2xl bg-brand-slatebg">
+                                    <img
+                                        src={item.image}
+                                        alt={item.image_caption || item.title}
+                                        className="w-full h-full object-cover"
+                                    />
+                                </div>
+                                {item.image_caption && <figcaption className="text-sm text-muted-foreground mt-3 text-center italic">{item.image_caption}</figcaption>}
+                            </figure>
                         )}
                     </div>
                 </div>
@@ -111,6 +125,22 @@ export default function NewsDetailPage({ params }) {
                             </div>
                         </article>
 
+                        {item.gallery?.length > 0 && (
+                            <section className="mt-10">
+                                <h2 className="text-lg font-heading font-bold text-brand-ink mb-4">Galeri Foto</h2>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                    {item.gallery.map((g, i) => (
+                                        <figure key={i}>
+                                            <button type="button" onClick={() => setLightbox(g)} className="block w-full aspect-[4/3] rounded-2xl overflow-hidden bg-brand-slatebg group">
+                                                <img src={g.url} alt={g.caption || `Foto ${i + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                            </button>
+                                            {g.caption && <figcaption className="text-xs text-muted-foreground mt-2 leading-snug">{g.caption}</figcaption>}
+                                        </figure>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+
                         {item.tags?.length > 0 && (
                             <div className="mt-8 flex flex-wrap gap-2">
                                 {item.tags.map(t => <span key={t} className="text-xs px-3 py-1 rounded-full bg-brand-greenlight text-brand-green font-medium">#{t}</span>)}
@@ -118,13 +148,27 @@ export default function NewsDetailPage({ params }) {
                         )}
 
                         <div className="mt-12 pt-8 border-t border-border flex flex-wrap items-center justify-between gap-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-brand-green flex items-center justify-center text-white font-bold">{(item.author || 'Y')[0].toUpperCase()}</div>
-                                <div>
-                                    <p className="text-sm font-bold text-brand-ink">{item.author || 'Tim Redaksi YABABERMA'}</p>
-                                    <p className="text-xs text-muted-foreground">Yayasan Banua Berkah Mandiri</p>
+                            {item.author_profile ? (
+                                <Link href={`/penulis/${item.author_profile.slug}`} className="flex items-center gap-3 group max-w-xl">
+                                    <InitialsAvatar src={item.author_profile.photo} name={item.author_profile.name} className="w-14 h-14 rounded-full" />
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">Ditulis oleh</p>
+                                        <p className="font-bold text-brand-ink group-hover:text-brand-green transition-colors">{item.author}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {[item.author_profile.role, item.author_profile.since_year ? `Menulis di YABABERMA sejak ${item.author_profile.since_year}` : ''].filter(Boolean).join(' · ')}
+                                        </p>
+                                        <span className="text-xs text-brand-green font-semibold inline-flex items-center gap-1 mt-1">Lihat profil penulis <ArrowRight className="w-3 h-3" /></span>
+                                    </div>
+                                </Link>
+                            ) : (
+                                <div className="flex items-center gap-3">
+                                    <InitialsAvatar name={item.author || 'YABABERMA'} className="w-10 h-10 rounded-full" />
+                                    <div>
+                                        <p className="text-sm font-bold text-brand-ink">{item.author || 'Tim Redaksi YABABERMA'}</p>
+                                        <p className="text-xs text-muted-foreground">Yayasan Banua Berkah Mandiri</p>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
                             <div className="flex items-center gap-2">
                                 <Button variant="outline" size="sm" className="rounded-xl" onClick={handleShare}>
@@ -148,6 +192,17 @@ export default function NewsDetailPage({ params }) {
                     </div>
                 </div>
             </div>
+            <Dialog open={!!lightbox} onOpenChange={(o) => !o && setLightbox(null)}>
+                <DialogContent className="max-w-4xl p-3 rounded-2xl">
+                    <DialogTitle className="sr-only">{lightbox?.caption || 'Foto artikel'}</DialogTitle>
+                    {lightbox && (
+                        <figure>
+                            <img src={lightbox.url} alt={lightbox.caption || 'Foto artikel'} className="w-full max-h-[75vh] object-contain rounded-xl bg-black/5" />
+                            {lightbox.caption && <figcaption className="text-sm text-muted-foreground mt-3 text-center">{lightbox.caption}</figcaption>}
+                        </figure>
+                    )}
+                </DialogContent>
+            </Dialog>
         </main>
     );
 }

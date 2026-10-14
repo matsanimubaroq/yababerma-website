@@ -292,3 +292,135 @@ test('the public default admin key only works while no real key is configured', 
     assert.equal(await probe(), 200, 'default key still opens a fresh install (no lockout)')
   } finally { process.env.ADMIN_KEY = saved }
 })
+
+// ================= Testimoni, Komunitas, Partner, Penulis =================
+test('no DB: new content kinds show the same data in admin and public, read-only', async () => {
+  noDb()
+  for (const [pub, adm] of [['testimonials', 'testimonials'], ['partners', 'partners'], ['communities', 'communities']]) {
+    const p = (await call('GET', pub)).body
+    const a = (await call('GET', `admin/${adm}`, { admin: true })).body
+    assert.equal(a.db, false)
+    assert.deepEqual(ids(a.items), ids(p), pub)
+  }
+  assert.equal((await call('GET', 'partners')).body.length, 6, 'the six former hard-coded partners')
+  assert.ok((await call('GET', 'partners')).body.every((x) => x.type === 'kebaikan' && x.type_label === 'Partner Kebaikan'))
+  const author = (await call('GET', 'authors/matsani-mubaroq')).body
+  assert.equal(author.display_name, 'Matsani Mubaroq, S.Sos.')
+  assert.equal(author.since_year, 2015)
+  assert.deepEqual(author.expertise, ['Sosial', 'Komunikasi', 'Organisasi', 'Kemanusiaan'])
+  assert.ok(author.articles.length >= 3, 'starter articles belong to Matsani')
+  const news = (await call('GET', 'news')).body
+  assert.ok(news.every((n) => n.author_profile?.slug === 'matsani-mubaroq'))
+  assert.equal((await call('POST', 'admin/partners', { admin: true, body: { name: 'x' } })).status, 503)
+})
+
+test('Entries: create -> public, hide -> gone, reorder -> order followed, delete', async () => {
+  useDb()
+  const mk = async (name) => (await call('POST', 'admin/testimonials', { admin: true, body: { name, quote: `kata ${name}` } })).body
+  const a = await mk('Uji A'), b = await mk('Uji B')
+  assert.equal(a.status, 'Active', 'new entries are shown by default')
+  let pub = (await call('GET', 'testimonials')).body.map((t) => t.id)
+  assert.ok(pub.indexOf(a.id) < pub.indexOf(b.id))
+
+  const all = (await call('GET', 'admin/testimonials', { admin: true })).body.items.map((t) => t.id)
+  const reordered = [b.id, a.id, ...all.filter((id) => id !== a.id && id !== b.id)]
+  assert.equal((await call('POST', 'admin/testimonials/reorder', { admin: true, body: { ids: reordered } })).status, 200)
+  pub = (await call('GET', 'testimonials')).body.map((t) => t.id)
+  assert.deepEqual(pub.slice(0, 2), [b.id, a.id], 'public follows admin order')
+
+  await call('PUT', `admin/testimonials/${a.id}`, { admin: true, body: { status: 'Inactive' } })
+  assert.ok(!(await call('GET', 'testimonials')).body.some((t) => t.id === a.id), 'hidden testimonial not public')
+  const edited = await call('PUT', `admin/testimonials/${b.id}`, { admin: true, body: { quote: 'kata baru' } })
+  assert.equal(edited.body.quote, 'kata baru')
+  for (const x of [a, b]) assert.equal((await call('DELETE', `admin/testimonials/${x.id}`, { admin: true })).body.deleted, 1)
+})
+
+test('Entries: validation (rating, Instagram, unsafe links, partner type, year)', async () => {
+  useDb()
+  const bad = async (path, body, re) => { const r = await call('POST', path, { admin: true, body }); assert.equal(r.status, 400, JSON.stringify(body)); assert.match(r.body.error, re) }
+  await bad('admin/communities', { name: 'K', rating: 0 }, /minimal 1/)
+  await bad('admin/communities', { name: 'K', rating: 6 }, /maksimal 5/)
+  await bad('admin/communities', { name: 'K', instagram: 'https://evil.example/x' }, /instagram\.com/)
+  await bad('admin/communities', { name: 'K', logo: 'javascript:alert(1)' }, /http/)
+  await bad('admin/partners', { name: 'P', type: 'sponsor' }, /Tipe partner/)
+  await bad('admin/partners', { name: 'P', url: 'javascript:alert(1)' }, /http/)
+  await bad('admin/authors', { name: 'A', since_year: 2999 }, /Tahun mulai menulis/)
+  await bad('admin/testimonials', { name: 'T' }, /Testimoni wajib/)
+  await bad('admin/news', { title: 'G', gallery: [{ url: 'javascript:x', caption: 'c' }] }, /http/)
+  await bad('admin/news', { title: 'G', author_id: 'tidak-ada' }, /Penulis tidak ditemukan/)
+
+  const c = (await call('POST', 'admin/communities', { admin: true, body: { name: 'Relawan Banua', instagram: '@relawan.banua', rating: '4' } })).body
+  assert.equal(c.instagram, 'https://instagram.com/relawan.banua')
+  assert.equal(c.rating, 4)
+  await call('DELETE', `admin/communities/${c.id}`, { admin: true })
+})
+
+test('Komunitas: related program shown only while that program is public', async () => {
+  useDb()
+  const prog = (await call('POST', 'admin/campaigns', { admin: true, body: { title: 'Program Komunitas', status: 'Active' } })).body
+  const c = (await call('POST', 'admin/communities', { admin: true, body: { name: 'Komunitas Uji', rating: 5, program_slug: prog.slug } })).body
+  let pub = (await call('GET', 'communities')).body.find((x) => x.id === c.id)
+  assert.equal(pub.program_title, 'Program Komunitas')
+  await call('PUT', `admin/campaigns/${prog.id}`, { admin: true, body: { status: 'Inactive' } })
+  pub = (await call('GET', 'communities')).body.find((x) => x.id === c.id)
+  assert.equal(pub.program_slug, '', 'no link to a hidden program')
+  await call('DELETE', `admin/communities/${c.id}`, { admin: true })
+  await call('DELETE', `admin/campaigns/${prog.id}`, { admin: true })
+})
+
+test('Penulis: article link, rename follows, in-use delete blocked, inactive hidden; captions + gallery', async () => {
+  useDb()
+  const au = (await call('POST', 'admin/authors', { admin: true, body: { name: 'Penulis Uji', degree: 'M.Pd.', since_year: 2020, expertise: 'Pendidikan, Sosial' } })).body
+  assert.equal(au.slug, 'penulis-uji')
+  assert.deepEqual(au.expertise, ['Pendidikan', 'Sosial'])
+  const art = (await call('POST', 'admin/news', { admin: true, body: {
+    title: 'Artikel Penulis Uji', content: 'isi', status: 'Active', author_id: au.id, image: '/api/media/x', image_caption: 'Foto sampul',
+    gallery: [{ url: 'https://img.example/a.jpg', caption: 'Satu' }, { url: '/api/media/b', caption: 'Dua' }],
+  } })).body
+  assert.equal(art.author, 'Penulis Uji, M.Pd.')
+
+  let pub = (await call('GET', `news/${art.slug}`)).body
+  assert.equal(pub.author_profile.slug, 'penulis-uji')
+  assert.equal(pub.image_caption, 'Foto sampul')
+  assert.deepEqual(pub.gallery.map((g) => g.caption), ['Satu', 'Dua'])
+  const profile = (await call('GET', 'authors/penulis-uji')).body
+  assert.deepEqual(profile.articles.map((a) => a.id), [art.id])
+
+  await call('PUT', `admin/authors/${au.id}`, { admin: true, body: { name: 'Penulis Baru' } })
+  assert.equal((await call('GET', `news/${art.slug}`)).body.author, 'Penulis Baru, M.Pd.', 'rename shows on the article')
+  assert.equal((await call('GET', 'authors/penulis-uji')).status, 200, 'slug stays stable after rename')
+
+  const del = await call('DELETE', `admin/authors/${au.id}`, { admin: true })
+  assert.equal(del.status, 409)
+  assert.match(del.body.error, /masih dipakai oleh 1 artikel/)
+
+  await call('PUT', `admin/authors/${au.id}`, { admin: true, body: { status: 'Inactive' } })
+  assert.equal((await call('GET', 'authors/penulis-uji')).status, 404)
+  pub = (await call('GET', `news/${art.slug}`)).body
+  assert.equal(pub.author_profile, null)
+  assert.equal(pub.author, 'Penulis Baru, M.Pd.', 'name still shown, just not linked')
+
+  await call('DELETE', `admin/news/${art.id}`, { admin: true })
+  assert.equal((await call('DELETE', `admin/authors/${au.id}`, { admin: true })).status, 200)
+})
+
+test('Migration: legacy "Tim YABABERMA" articles move to Matsani exactly once', async () => {
+  useDb()
+  await call('GET', 'root') // make sure the DB is connected and seeded
+  stores.get('news').push({ id: 'legacy-tim', slug: 'legacy-tim', title: 'Lama', status: 'Active', author: 'Tim YABABERMA', content: 'x', publishedAt: '2026-01-01T00:00:00.000Z' })
+  const db = new FakeDb()
+  const first = await cms.runOnce(db, 'test-article-authors', () => cms.assignArticlesToAuthor(db, ['Tim YABABERMA'], 'matsani-mubaroq'))
+  assert.equal(first, true)
+  const pub = (await call('GET', 'news/legacy-tim')).body
+  assert.equal(pub.author_profile.slug, 'matsani-mubaroq')
+  assert.equal(pub.author, 'Matsani Mubaroq, S.Sos.')
+  assert.equal(await cms.runOnce(db, 'test-article-authors', () => { throw new Error('must not run twice') }), false)
+  await call('DELETE', 'admin/news/legacy-tim', { admin: true })
+})
+
+test('Entries are seeded once: deleting all testimonials keeps them deleted', async () => {
+  useDb()
+  for (const t of (await call('GET', 'admin/testimonials', { admin: true })).body.items) await call('DELETE', `admin/testimonials/${t.id}`, { admin: true })
+  await cms.ensureEntrySeeds(new FakeDb(), { testimonial: () => [{ id: 'again', name: 'x', quote: 'y' }] })
+  assert.equal((await call('GET', 'testimonials')).body.length, 0)
+})

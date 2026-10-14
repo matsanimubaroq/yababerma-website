@@ -5,6 +5,8 @@ import { Resend } from 'resend'
 import {
   listAll, listLive, getById, getLiveBySlug, createProgram, updateProgram, createArticle, updateArticle,
   deleteItem, getHomeSettings, getPublicHomeSettings, saveHomeSettings, ensureCmsSeed,
+  createEntry, updateEntry, reorderEntries, attachAuthors, getAuthorProfile, withProgramTitles,
+  ensureEntrySeeds, runOnce, assignArticlesToAuthor,
 } from '../../../lib/cms.js'
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
@@ -362,8 +364,24 @@ function seedCampaigns() {
   return rawSeedCampaigns().map((c, i) => ({ ...c, id: `seed-${c.slug}`, status: 'Active', publishedAt: daysFromNow(-(i + 1) * 3) }))
 }
 function seedNews() {
-  return rawSeedNews().map((n) => ({ ...n, id: `seed-${n.slug}`, status: 'Active', author: 'Tim YABABERMA', tags: [String(n.category || 'berita').toLowerCase()], publishedAt: n.date }))
+  return rawSeedNews().map((n) => ({ ...n, id: `seed-${n.slug}`, status: 'Active', author: 'Matsani Mubaroq, S.Sos.', author_id: SEED_AUTHOR_ID, tags: [String(n.category || 'berita').toLowerCase()], publishedAt: n.date }))
 }
+const SEED_AUTHOR_ID = 'seed-author-matsani'
+function seedAuthors() {
+  return [{
+    id: SEED_AUTHOR_ID, slug: 'matsani-mubaroq', name: 'Matsani Mubaroq', degree: 'S.Sos.', role: 'Penulis Tetap', photo: '',
+    since_year: 2015, education: 'S1 Komunikasi & Penyiaran Islam, IAI Al-Azis',
+    expertise: ['Sosial', 'Komunikasi', 'Organisasi', 'Kemanusiaan'],
+    bio: 'Menulis di YABABERMA sejak 2015. Lulusan S1 Program Studi Komunikasi & Penyiaran Islam IAI Al-Azis, dengan ranah keilmuan sosial, komunikasi, organisasi, dan kemanusiaan.',
+    instagram: '', status: 'Active', order: 0,
+  }]
+}
+// The partners that used to be hard-coded on /tentang-kami, now managed from the admin panel.
+function seedPartners() {
+  return ['BAZNAS', 'Bank Kalsel', 'Kemenag RI', 'Baitulmaal', 'Rumah Zakat', 'Dompet Dhuafa']
+    .map((name, i) => ({ id: `seed-partner-${i + 1}`, name, logo: '', url: '', type: 'kebaikan', status: 'Active', order: i }))
+}
+const seedCommunities = () => []
 function seedSlides() {
   const base = [
     { slug: 'operasional-panti-asuhan-banua-berkah', badge: 'Panti Asuhan', title: 'Bahagiakan Anak Yatim & Dhuafa Banua', subtitle: 'Uluran tangan Anda menghadirkan senyum, pendidikan, dan masa depan bagi mereka.', image: 'https://images.pexels.com/photos/35105938/pexels-photo-35105938.jpeg' },
@@ -376,10 +394,10 @@ function seedSlides() {
 function seedTestimonials() {
   const av = (n) => 'https://ui-avatars.com/api/?name=' + encodeURIComponent(n) + '&background=00A651&color=fff&bold=true'
   return [
-    { id: uuidv4(), name: 'Ustaz H. Ahmad Fauzi', role: 'Tokoh Masyarakat', quote: 'YABABERMA amanah dan transparan dalam menyalurkan donasi. Semoga terus menjadi berkah bagi Banua.', avatar: av('Ahmad Fauzi') },
-    { id: uuidv4(), name: 'Siti Aminah', role: 'Penerima Manfaat', quote: 'Alhamdulillah, bantuan sembako sangat membantu keluarga kami. Terima kasih para donatur.', avatar: av('Siti Aminah') },
-    { id: uuidv4(), name: 'Budi Santoso', role: 'Donatur Rutin', quote: 'Prosesnya mudah, laporannya jelas. Saya tenang berdonasi lewat YABABERMA.', avatar: av('Budi Santoso') },
-    { id: uuidv4(), name: 'Hj. Nurul Hidayah', role: 'Donatur', quote: 'Senang bisa ikut wakaf Al-Qur\u2019an. Semoga menjadi jariyah yang tak terputus.', avatar: av('Nurul Hidayah') },
+    { id: 'seed-testi-1', name: 'Ustaz H. Ahmad Fauzi', role: 'Tokoh Masyarakat', quote: 'YABABERMA amanah dan transparan dalam menyalurkan donasi. Semoga terus menjadi berkah bagi Banua.', avatar: av('Ahmad Fauzi') },
+    { id: 'seed-testi-2', name: 'Siti Aminah', role: 'Penerima Manfaat', quote: 'Alhamdulillah, bantuan sembako sangat membantu keluarga kami. Terima kasih para donatur.', avatar: av('Siti Aminah') },
+    { id: 'seed-testi-3', name: 'Budi Santoso', role: 'Donatur Rutin', quote: 'Prosesnya mudah, laporannya jelas. Saya tenang berdonasi lewat YABABERMA.', avatar: av('Budi Santoso') },
+    { id: 'seed-testi-4', name: 'Hj. Nurul Hidayah', role: 'Donatur', quote: 'Senang bisa ikut wakaf Al-Qur\u2019an. Semoga menjadi jariyah yang tak terputus.', avatar: av('Nurul Hidayah') },
   ]
 }
 
@@ -413,7 +431,9 @@ function seedPrayers() {
 
 async function ensureSeed(db) {
   await ensureCmsSeed(db, { programs: seedCampaigns, articles: seedNews, slides: seedSlides })
-  if (await db.collection('testimonials').countDocuments() === 0) await db.collection('testimonials').insertMany(seedTestimonials())
+  await ensureEntrySeeds(db, { testimonial: seedTestimonials, partner: seedPartners, author: seedAuthors })
+  // One-time: the starter articles were written as "Tim YABABERMA"; they belong to Matsani Mubaroq.
+  await runOnce(db, 'article-authors-v1', () => assignArticlesToAuthor(db, ['Tim YABABERMA'], 'matsani-mubaroq'))
   if (await db.collection('gallery').countDocuments() === 0) await db.collection('gallery').insertMany(seedGallery())
   if (await db.collection('prayers').countDocuments() === 0) await db.collection('prayers').insertMany(seedPrayers())
   if (await db.collection('annual_reports').countDocuments() === 0) await db.collection('annual_reports').insertMany(seedAnnualReports())
@@ -554,6 +574,10 @@ async function sendWhatsAppThankYou(donation, template) {
   if (!donation || !donation.donor_whatsapp) return false
   return fonnteSend(donation.donor_whatsapp, renderWaTemplate(template, donation))
 }
+
+// Admin URL segment -> CMS entry kind, and the demo content each kind shows without a database.
+const ENTRY_ROUTES = { testimonials: 'testimonial', communities: 'community', partners: 'partner', authors: 'author' }
+const ENTRY_SEEDS = { testimonial: seedTestimonials, community: seedCommunities, partner: seedPartners, author: seedAuthors }
 
 // ---------------- Router ----------------
 async function handleRoute(request, { params }) {
@@ -728,19 +752,29 @@ async function handleRoute(request, { params }) {
       const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '50', 10) || 50, 1), 200)
       let items = await listLive(db, 'article', seedNews)
       if (category) items = items.filter((n) => n.category === category)
-      return handleCORS(NextResponse.json(items.slice(0, limit)))
+      return handleCORS(NextResponse.json(await attachAuthors(db, items.slice(0, limit), seedAuthors)))
     }
     if (path[0] === 'news' && path[1] && method === 'GET') {
       const item = await getLiveBySlug(db, 'article', path[1], seedNews)
       if (!item) return handleCORS(NextResponse.json({ error: 'News not found' }, { status: 404 }))
-      return handleCORS(NextResponse.json(item))
+      const [withAuthor] = await attachAuthors(db, [item], seedAuthors)
+      return handleCORS(NextResponse.json(withAuthor))
     }
 
     // ---- Testimonials & Gallery ----
     if (route === '/testimonials' && method === 'GET') {
-      if (!db) return handleCORS(NextResponse.json(cleanArr(seedTestimonials())))
-      const items = await db.collection('testimonials').find({}).limit(50).toArray()
-      return handleCORS(NextResponse.json(cleanArr(items)))
+      return handleCORS(NextResponse.json(await listLive(db, 'testimonial', seedTestimonials)))
+    }
+    if (route === '/communities' && method === 'GET') {
+      return handleCORS(NextResponse.json(await withProgramTitles(db, await listLive(db, 'community', seedCommunities), seedCampaigns)))
+    }
+    if (route === '/partners' && method === 'GET') {
+      return handleCORS(NextResponse.json(await listLive(db, 'partner', seedPartners)))
+    }
+    if (path[0] === 'authors' && path[1] && !path[2] && method === 'GET') {
+      const profile = await getAuthorProfile(db, path[1], { seedAuthors, seedArticles: seedNews })
+      if (!profile) return handleCORS(NextResponse.json({ error: 'Penulis tidak ditemukan' }, { status: 404 }))
+      return handleCORS(NextResponse.json(profile))
     }
     if (route === '/gallery' && method === 'GET') {
       if (!db) return handleCORS(NextResponse.json(cleanArr(seedGallery())))
@@ -982,7 +1016,11 @@ async function handleRoute(request, { params }) {
       // the same demo content the visitors see (db:false tells the panel it is read-only).
       if (method === 'GET') {
         if (route === '/admin/campaigns') return handleCORS(NextResponse.json({ items: await listAll(db, 'program', seedCampaigns), db: !!db }))
-        if (route === '/admin/news') return handleCORS(NextResponse.json({ items: await listAll(db, 'article', seedNews), db: !!db }))
+        if (route === '/admin/news') return handleCORS(NextResponse.json({ items: await attachAuthors(db, await listAll(db, 'article', seedNews), seedAuthors), db: !!db }))
+        if (path[0] === 'admin' && ENTRY_ROUTES[path[1]] && !path[2]) {
+          const kind = ENTRY_ROUTES[path[1]]
+          return handleCORS(NextResponse.json({ items: await listAll(db, kind, ENTRY_SEEDS[kind]), db: !!db }))
+        }
         if (route === '/admin/home-settings') return handleCORS(NextResponse.json({ ...(await getHomeSettings(db, seedSlides)), db: !!db }))
         if (path[0] === 'admin' && path[1] === 'campaigns' && path[2]) {
           const item = await getById(db, 'program', path[2], seedCampaigns)
@@ -1135,6 +1173,15 @@ async function handleRoute(request, { params }) {
 
       // ---- Slider ----
       if (route === '/admin/home-settings' && method === 'POST') return handleCORS(NextResponse.json(await saveHomeSettings(db, await request.json())))
+
+      // ---- Testimoni, Komunitas, Partner, Penulis ----
+      if (path[0] === 'admin' && ENTRY_ROUTES[path[1]]) {
+        const kind = ENTRY_ROUTES[path[1]]
+        if (!path[2] && method === 'POST') return handleCORS(NextResponse.json(await createEntry(db, kind, await request.json())))
+        if (path[2] === 'reorder' && !path[3] && method === 'POST') return handleCORS(NextResponse.json(await reorderEntries(db, kind, await request.json())))
+        if (path[2] && !path[3] && method === 'PUT') return handleCORS(NextResponse.json(await updateEntry(db, kind, path[2], await request.json())))
+        if (path[2] && !path[3] && method === 'DELETE') return handleCORS(NextResponse.json(await deleteItem(db, kind, path[2])))
+      }
 
       // ---- Berita & Artikel ----
       if (route === '/admin/news' && method === 'POST') return handleCORS(NextResponse.json(await createArticle(db, await request.json())))

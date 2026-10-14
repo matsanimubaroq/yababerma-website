@@ -14,6 +14,7 @@ import {
   Play, Quote, Calendar, Clock, Mail, ShieldCheck, HeartHandshake, Loader2, FileBarChart,
 } from 'lucide-react';
 import CampaignCard from '@/components/site/campaign-card';
+import InitialsAvatar from '@/components/site/initials-avatar';
 import CountUp from '@/components/site/count-up';
 import PrayerWall from '@/components/site/prayer-wall';
 import InstagramFeed from '@/components/site/instagram-feed';
@@ -196,8 +197,8 @@ export default function App() {
         </div>
       </section>
 
-      {/* TESTIMONI */}
-      <section className="bg-brand-slatebg">
+      {/* TESTIMONI (managed in admin; hidden when none are shown) */}
+      {!(Array.isArray(testimonials) && testimonials.length === 0) && <section className="bg-brand-slatebg">
         <div className="container py-16 md:py-20">
           <SectionHeading eyebrow="Kata Mereka" title="Cerita &amp; Kepercayaan" center desc="Suara para donatur, tokoh masyarakat, dan penerima manfaat." />
           <div className="mt-10 px-4 md:px-10">
@@ -209,7 +210,7 @@ export default function App() {
                       <Quote className="w-8 h-8 text-brand-green/30" />
                       <p className="text-brand-ink mt-3 leading-relaxed">&ldquo;{t.quote}&rdquo;</p>
                       <div className="flex items-center gap-3 mt-5">
-                        <img src={t.avatar} alt={t.name} className="w-11 h-11 rounded-full" />
+                        <InitialsAvatar src={t.avatar} name={t.name} className="w-11 h-11 rounded-full" />
                         <div>
                           <p className="font-semibold text-sm text-brand-ink">{t.name}</p>
                           <p className="text-xs text-muted-foreground">{t.role}</p>
@@ -224,7 +225,7 @@ export default function App() {
             </Carousel>
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* GALERI */}
       <section className="container py-16 md:py-20">

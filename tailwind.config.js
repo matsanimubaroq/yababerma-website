@@ -94,12 +94,18 @@ module.exports = {
           'fade-up': {
             from: { opacity: '0', transform: 'translateY(16px)' },
             to: { opacity: '1', transform: 'translateY(0)' }
+          },
+          // Scrolls a row holding two identical copies of its content by one copy's width: a seamless loop.
+          marquee: {
+            from: { transform: 'translateX(0)' },
+            to: { transform: 'translateX(-50%)' }
           }
         },
         animation: {
           'accordion-down': 'accordion-down 0.2s ease-out',
           'accordion-up': 'accordion-up 0.2s ease-out',
-          'fade-up': 'fade-up 0.5s ease-out both'
+          'fade-up': 'fade-up 0.5s ease-out both',
+          marquee: 'marquee 40s linear infinite'
         }
       }
     },
