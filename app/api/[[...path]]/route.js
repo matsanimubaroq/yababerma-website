@@ -2,6 +2,10 @@ import { MongoClient } from 'mongodb'
 import { v4 as uuidv4 } from 'uuid'
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
+import {
+  listAll, listLive, getById, getLiveBySlug, createProgram, updateProgram, createArticle, updateArticle,
+  deleteItem, getHomeSettings, getPublicHomeSettings, saveHomeSettings, ensureCmsSeed,
+} from '../../../lib/cms.js'
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
@@ -21,7 +25,7 @@ function classifyMongoError(e) {
 // Returns a Db instance, or null when MONGO_URL is missing/placeholder/unreachable.
 // Never throws: the site must keep serving seed data even without a database.
 async function connectToMongo() {
-  const uri = String(process.env.MONGO_URL || '').trim()
+  const uri = String(process.env.MONGO_URL || process.env.MONGODB_URI || '').trim()
   if (!uri || uri.includes('cluster0.abcde.mongodb.net') || !/^mongodb(\+srv)?:\/\//.test(uri)) {
     if (uri) console.error('MONGO_URL tidak valid, berjalan tanpa database')
     dbFailure = !uri ? 'missing_env' : /^mongodb(\+srv)?:\/\//.test(uri) ? 'placeholder_value' : 'invalid_format'
@@ -63,15 +67,6 @@ export async function OPTIONS() {
 
 const clean = (doc) => { if (!doc) return doc; const { _id, ...rest } = doc; return rest }
 const cleanArr = (arr) => arr.map(clean)
-
-function slugify(s) {
-  return String(s || '').toLowerCase().trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 80)
-}
 
 // ---------------- Email (Resend) ----------------
 // Emails need an absolute URL; the logo is served from /public.
@@ -234,7 +229,7 @@ function seedAnnualReports() {
   ]
 }
 
-function seedCampaigns() {
+function rawSeedCampaigns() {
   return [
     {
       id: uuidv4(), slug: 'wakaf-al-quran-santri-pelosok',
@@ -352,13 +347,30 @@ function seedCampaigns() {
   ]
 }
 
-function seedNews() {
+function rawSeedNews() {
   return [
     { id: uuidv4(), slug: 'penyaluran-wakaf-quran-pelosok', title: "Penyaluran Wakaf Al-Qur'an ke Pelosok Kalimantan", excerpt: 'Sebanyak 250 mushaf Al-Qur\u2019an tersalurkan ke lima TPQ di Kabupaten Banjar.', image: 'https://images.pexels.com/photos/31528155/pexels-photo-31528155.jpeg', date: daysFromNow(-4), read_time: 3, category: 'Program', content: 'Alhamdulillah, program Wakaf Al-Qur\u2019an kembali menyalurkan 250 mushaf ke lima TPQ di pelosok Kabupaten Banjar. Antusiasme santri sangat tinggi menyambut mushaf baru mereka.' },
     { id: uuidv4(), slug: 'kegiatan-belajar-santri-tpq', title: 'Semangat Belajar Santri TPQ Banua Berkah', excerpt: 'Kegiatan belajar mengaji rutin santri TPQ Banua Berkah setiap sore.', image: 'https://images.pexels.com/photos/35548841/pexels-photo-35548841.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940', date: daysFromNow(-9), read_time: 4, category: 'Pendidikan', content: 'Setiap sore, puluhan santri berkumpul di TPQ Banua Berkah untuk belajar membaca dan menghafal Al-Qur\u2019an bersama para ustaz dan ustazah.' },
     { id: uuidv4(), slug: 'distribusi-paket-sembako-dhuafa', title: 'Distribusi Paket Sembako untuk Keluarga Dhuafa', excerpt: '120 paket sembako tersalur ke keluarga dhuafa dan lansia di Banjarmasin.', image: 'https://images.pexels.com/photos/7345447/pexels-photo-7345447.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940', date: daysFromNow(-14), read_time: 2, category: 'Kemanusiaan', content: 'Tim relawan YABABERMA menyalurkan 120 paket sembako kepada keluarga dhuafa dan lansia di beberapa kelurahan di Banjarmasin.' },
     { id: uuidv4(), slug: 'santunan-anak-panti-asuhan', title: 'Santunan & Kunjungan Anak Panti Asuhan', excerpt: 'Kegiatan santunan rutin bersama anak-anak Panti Asuhan Banua Berkah.', image: 'https://images.pexels.com/photos/34628746/pexels-photo-34628746.jpeg', date: daysFromNow(-21), read_time: 3, category: 'Sosial', content: 'Kegiatan santunan bulanan bersama anak-anak Panti Asuhan Banua Berkah berlangsung penuh kehangatan dan kebahagiaan.' },
   ]
+}
+
+// Deterministic ids so the public site and the admin panel agree on the same demo content
+// even when no database is configured.
+function seedCampaigns() {
+  return rawSeedCampaigns().map((c, i) => ({ ...c, id: `seed-${c.slug}`, status: 'Active', publishedAt: daysFromNow(-(i + 1) * 3) }))
+}
+function seedNews() {
+  return rawSeedNews().map((n) => ({ ...n, id: `seed-${n.slug}`, status: 'Active', author: 'Tim YABABERMA', tags: [String(n.category || 'berita').toLowerCase()], publishedAt: n.date }))
+}
+function seedSlides() {
+  const base = [
+    { slug: 'operasional-panti-asuhan-banua-berkah', badge: 'Panti Asuhan', title: 'Bahagiakan Anak Yatim & Dhuafa Banua', subtitle: 'Uluran tangan Anda menghadirkan senyum, pendidikan, dan masa depan bagi mereka.', image: 'https://images.pexels.com/photos/35105938/pexels-photo-35105938.jpeg' },
+    { slug: 'wakaf-al-quran-santri-pelosok', badge: 'Wakaf', title: "Wakaf Al-Qur'an untuk Santri Pelosok", subtitle: 'Hadiahkan mushaf Al-Qur\u2019an, alirkan pahala jariyah yang tak pernah putus.', image: 'https://images.unsplash.com/photo-1589995635011-078e0bb91d11' },
+    { slug: 'paket-sembako-dhuafa-banjarmasin', badge: 'Sedekah', title: 'Paket Sembako untuk Keluarga Dhuafa', subtitle: 'Ringankan beban saudara kita di Banjarmasin dengan sekantong keberkahan.', image: 'https://images.pexels.com/photos/31679144/pexels-photo-31679144.jpeg' },
+  ]
+  return base.map((x, i) => ({ id: `seed-slide-${i + 1}`, type: 'campaign', link: `/donasi/${x.slug}`, status: 'Active', publishedAt: daysFromNow(-30), ...x }))
 }
 
 function seedTestimonials() {
@@ -400,8 +412,7 @@ function seedPrayers() {
 }
 
 async function ensureSeed(db) {
-  if (await db.collection('campaigns').countDocuments() === 0) await db.collection('campaigns').insertMany(seedCampaigns())
-  if (await db.collection('news').countDocuments() === 0) await db.collection('news').insertMany(seedNews())
+  await ensureCmsSeed(db, { programs: seedCampaigns, articles: seedNews, slides: seedSlides })
   if (await db.collection('testimonials').countDocuments() === 0) await db.collection('testimonials').insertMany(seedTestimonials())
   if (await db.collection('gallery').countDocuments() === 0) await db.collection('gallery').insertMany(seedGallery())
   if (await db.collection('prayers').countDocuments() === 0) await db.collection('prayers').insertMany(seedPrayers())
@@ -556,15 +567,13 @@ async function handleRoute(request, { params }) {
 
     // ---- Campaigns ----
     if (route === '/campaigns' && method === 'GET') {
-      if (!db) return handleCORS(NextResponse.json(cleanArr(seedCampaigns())))
       const url = new URL(request.url)
       const category = url.searchParams.get('category')
       const featured = url.searchParams.get('featured')
-      const q = { published: { $ne: false } }
-      if (category && category !== 'semua') q.category = category
-      if (featured === 'true') q.featured = true
-      const items = await db.collection('campaigns').find(q).limit(200).toArray()
-      return handleCORS(NextResponse.json(cleanArr(items)))
+      let items = await listLive(db, 'program', seedCampaigns)
+      if (category && category !== 'semua') items = items.filter((c) => c.category === category)
+      if (featured === 'true') items = items.filter((c) => c.featured)
+      return handleCORS(NextResponse.json(items))
     }
 
     // ---- Media (serve uploaded files from DB) ----
@@ -584,23 +593,18 @@ async function handleRoute(request, { params }) {
       return handleCORS(res)
     }
 
-    // ---- Home slider settings (public read) ----
+    // ---- Home slider settings (public read: only Active + already published slides) ----
     if (route === '/home-settings' && method === 'GET') {
-      const doc = db ? await db.collection('settings').findOne({ id: 'home_settings' }) : null
-      return handleCORS(NextResponse.json({
-        slides: Array.isArray(doc?.slides) ? doc.slides : [],
-        duration_ms: Number(doc?.duration_ms) > 0 ? Number(doc.duration_ms) : 6000,
-      }))
+      return handleCORS(NextResponse.json(await getPublicHomeSettings(db, seedSlides, seedCampaigns)))
     }
 
     if (path[0] === 'campaigns' && path[1] && method === 'GET') {
-      const item = db ? await db.collection('campaigns').findOne({ slug: path[1] }) : seedCampaigns().find(c => c.slug === path[1])
+      const item = await getLiveBySlug(db, 'program', path[1], seedCampaigns)
       if (!item) return handleCORS(NextResponse.json({ error: 'Campaign not found' }, { status: 404 }))
-      if (item.published === false) return handleCORS(NextResponse.json({ error: 'Campaign not found' }, { status: 404 }))
       // recent public donations for this campaign
       const donations = db ? await db.collection('donations').find({ campaign_slug: path[1] }).sort({ created_at: -1 }).limit(10).toArray() : []
       const recent = donations.map(d => ({ name: d.is_anonymous ? 'Hamba Allah' : d.donor_name, amount: d.amount, message: d.message || '', created_at: d.created_at }))
-      return handleCORS(NextResponse.json({ ...clean(item), recent_donations: recent }))
+      return handleCORS(NextResponse.json({ ...item, recent_donations: recent }))
     }
 
     // ---- Donations ----
@@ -715,14 +719,17 @@ async function handleRoute(request, { params }) {
 
     // ---- News & Articles ----
     if (route === '/news' && method === 'GET') {
-      if (!db) return handleCORS(NextResponse.json(cleanArr(seedNews())))
-      const items = await db.collection('news').find({ status: 'Published' }).sort({ createdAt: -1 }).limit(50).toArray()
-      return handleCORS(NextResponse.json(cleanArr(items)))
+      const url = new URL(request.url)
+      const category = url.searchParams.get('category')
+      const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '50', 10) || 50, 1), 200)
+      let items = await listLive(db, 'article', seedNews)
+      if (category) items = items.filter((n) => n.category === category)
+      return handleCORS(NextResponse.json(items.slice(0, limit)))
     }
     if (path[0] === 'news' && path[1] && method === 'GET') {
-      const item = db ? await db.collection('news').findOne({ slug: path[1], status: 'Published' }) : seedNews().find(n => n.slug === path[1])
+      const item = await getLiveBySlug(db, 'article', path[1], seedNews)
       if (!item) return handleCORS(NextResponse.json({ error: 'News not found' }, { status: 404 }))
-      return handleCORS(NextResponse.json(clean(item)))
+      return handleCORS(NextResponse.json(item))
     }
 
     // ---- Testimonials & Gallery ----
@@ -739,7 +746,7 @@ async function handleRoute(request, { params }) {
 
     // ---- Stats ----
     if (route === '/stats' && method === 'GET') {
-      const campaigns = db ? await db.collection('campaigns').find({}).limit(200).toArray() : seedCampaigns()
+      const campaigns = await listLive(db, 'program', seedCampaigns)
       const total_collected = campaigns.reduce((s, c) => s + (c.collected_amount || 0), 0)
       const total_donors = campaigns.reduce((s, c) => s + (c.donor_count || 0), 0)
       const total_target = campaigns.reduce((s, c) => s + (c.target_amount || 0), 0)
@@ -774,7 +781,7 @@ async function handleRoute(request, { params }) {
       const currentYear = new Date().getFullYear()
 
       // Live current-year figures derived from live campaigns + donations
-      const campaigns = db ? await db.collection('campaigns').find({}).limit(200).toArray() : seedCampaigns()
+      const campaigns = await listLive(db, 'program', seedCampaigns)
       const catMap = {}
       campaigns.forEach(c => { catMap[c.category] = (catMap[c.category] || 0) + (c.collected_amount || 0) })
       const liveDoc = {
@@ -967,6 +974,21 @@ async function handleRoute(request, { params }) {
       const provided = String(request.headers.get('x-admin-key') || '').trim()
       if (!(await isValidAdminKey(db, provided))) return handleCORS(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
 
+      // CMS reads go through the same functions as the public site. Without a database they return
+      // the same demo content the visitors see (db:false tells the panel it is read-only).
+      if (method === 'GET') {
+        if (route === '/admin/campaigns') return handleCORS(NextResponse.json({ items: await listAll(db, 'program', seedCampaigns), db: !!db }))
+        if (route === '/admin/news') return handleCORS(NextResponse.json({ items: await listAll(db, 'article', seedNews), db: !!db }))
+        if (route === '/admin/home-settings') return handleCORS(NextResponse.json({ ...(await getHomeSettings(db, seedSlides)), db: !!db }))
+        if (path[0] === 'admin' && path[1] === 'campaigns' && path[2]) {
+          const item = await getById(db, 'program', path[2], seedCampaigns)
+          if (!item) return handleCORS(NextResponse.json({ error: 'Program tidak ditemukan' }, { status: 404 }))
+          const donations = db ? await db.collection('donations').find({ campaign_slug: item.slug }).sort({ created_at: -1 }).limit(10).toArray() : []
+          const recent = donations.map(d => ({ name: d.is_anonymous ? 'Hamba Allah' : d.donor_name, amount: d.amount, message: d.message || '', created_at: d.created_at }))
+          return handleCORS(NextResponse.json({ ...item, recent_donations: recent }))
+        }
+      }
+
       // Without a database the panel can still be opened, but there is nothing to manage:
       // answer GETs with empty/default payloads and refuse writes with a clear message.
       if (!db) {
@@ -974,7 +996,6 @@ async function handleRoute(request, { params }) {
           if (route === '/admin/summary') return handleCORS(NextResponse.json({ total_donations: 0, verified: 0, pending: 0, total_verified: 0, total_all: 0, confirmations: 0, db_missing: true }))
           if (route === '/admin/kurban') return handleCORS(NextResponse.json({ options: KURBAN_OPTIONS.map(o => ({ key: o.key, name: o.name, unit: o.unit, price: o.price, quota: o.quota || 0, sold_base: o.sold_base || 0 })), db_missing: true }))
           if (route === '/admin/wa-settings') return handleCORS(NextResponse.json({ thank_you_template: DEFAULT_WA_TEMPLATE, admin_notify_enabled: false, admin_number: '', token_configured: !!process.env.FONNTE_TOKEN, default_template: DEFAULT_WA_TEMPLATE, db_missing: true }))
-          if (route === '/admin/home-settings') return handleCORS(NextResponse.json({ slides: [], duration_ms: 6000, db_missing: true }))
           return handleCORS(NextResponse.json([]))
         }
         return noDbResponse()
@@ -1103,155 +1124,24 @@ async function handleRoute(request, { params }) {
       }
 
       // ---- Program/Campaign CMS ----
-      if (route === '/admin/campaigns' && method === 'GET') {
-        const items = await db.collection('campaigns').find({}).sort({ created_at: -1 }).limit(500).toArray()
-        if (items.length === 0) {
-          return handleCORS(NextResponse.json(cleanArr(seedCampaigns())))
-        }
-        return handleCORS(NextResponse.json(cleanArr(items)))
-      }
-      // Single campaign (incl. drafts) for admin preview
-      if (path[0] === 'admin' && path[1] === 'campaigns' && path[2] && method === 'GET') {
-        const item = await db.collection('campaigns').findOne({ id: path[2] })
-        if (!item) return handleCORS(NextResponse.json({ error: 'Program tidak ditemukan' }, { status: 404 }))
-        const donations = await db.collection('donations').find({ campaign_slug: item.slug }).sort({ created_at: -1 }).limit(10).toArray()
-        const recent = donations.map(d => ({ name: d.is_anonymous ? 'Hamba Allah' : d.donor_name, amount: d.amount, message: d.message || '', created_at: d.created_at }))
-        return handleCORS(NextResponse.json({ ...clean(item), recent_donations: recent }))
-      }
-      if (route === '/admin/campaigns' && method === 'POST') {
-        const body = await request.json()
-        const title = String(body.title || '').trim()
-        if (!title) return handleCORS(NextResponse.json({ error: 'Nama program wajib diisi.' }, { status: 400 }))
-        let base = slugify(title) || ('program-' + Date.now())
-        let slug = base, n = 1
-        while (await db.collection('campaigns').findOne({ slug })) { slug = `${base}-${++n}` }
-        const toArr = (v) => Array.isArray(v) ? v : (v ? String(v).split('\n').map(x => x.trim()).filter(Boolean) : [])
-        const doc = {
-          id: uuidv4(), slug, title,
-          category: body.category || 'sedekah',
-          short_desc: body.short_desc || '',
-          image: body.image || '',
-          story: toArr(body.story),
-          gallery: Array.isArray(body.gallery) ? body.gallery.filter(Boolean) : [],
-          updates: Array.isArray(body.updates) ? body.updates : [],
-          reports: Array.isArray(body.reports) ? body.reports : [],
-          video_url: body.video_url || '',
-          target_amount: Number(body.target_amount) || 0,
-          collected_amount: Number(body.collected_amount) || 0,
-          donor_count: Number(body.donor_count) || 0,
-          deadline: body.deadline || null,
-          featured: !!body.featured,
-          published: body.published === undefined ? false : !!body.published,
-          created_at: new Date().toISOString(),
-        }
-        await db.collection('campaigns').insertOne({ ...doc })
-        return handleCORS(NextResponse.json(clean(doc)))
-      }
-      if (path[0] === 'admin' && path[1] === 'campaigns' && path[2] && method === 'PUT') {
-        const id = path[2]
-        const body = await request.json()
-        const existing = await db.collection('campaigns').findOne({ id })
-        if (!existing) return handleCORS(NextResponse.json({ error: 'Program tidak ditemukan' }, { status: 404 }))
-        const toArr = (v) => Array.isArray(v) ? v : (v ? String(v).split('\n').map(x => x.trim()).filter(Boolean) : [])
-        const update = { updated_at: new Date().toISOString() }
-        const strFields = ['category', 'short_desc', 'image', 'video_url']
-        for (const k of strFields) if (k in body) update[k] = body[k] || ''
-        if ('title' in body) update.title = String(body.title).trim() || existing.title
-        if ('story' in body) update.story = toArr(body.story)
-        if ('gallery' in body) update.gallery = Array.isArray(body.gallery) ? body.gallery.filter(Boolean) : []
-        if ('updates' in body) update.updates = Array.isArray(body.updates) ? body.updates : []
-        if ('reports' in body) update.reports = Array.isArray(body.reports) ? body.reports : []
-        for (const k of ['target_amount', 'collected_amount', 'donor_count']) if (k in body) update[k] = Number(body[k]) || 0
-        if ('deadline' in body) update.deadline = body.deadline || null
-        if ('featured' in body) update.featured = !!body.featured
-        if ('published' in body) update.published = !!body.published
-        await db.collection('campaigns').updateOne({ id }, { $set: update })
-        const d = await db.collection('campaigns').findOne({ id })
-        return handleCORS(NextResponse.json(clean(d)))
-      }
-      if (path[0] === 'admin' && path[1] === 'campaigns' && path[2] && method === 'DELETE') {
-        const r = await db.collection('campaigns').deleteOne({ id: path[2] })
-        return handleCORS(NextResponse.json({ ok: true, deleted: r.deletedCount || 0 }))
-      }
+      // ---- Program (campaigns) ----
+      if (route === '/admin/campaigns' && method === 'POST') return handleCORS(NextResponse.json(await createProgram(db, await request.json())))
+      if (path[0] === 'admin' && path[1] === 'campaigns' && path[2] && method === 'PUT') return handleCORS(NextResponse.json(await updateProgram(db, path[2], await request.json())))
+      if (path[0] === 'admin' && path[1] === 'campaigns' && path[2] && method === 'DELETE') return handleCORS(NextResponse.json(await deleteItem(db, 'program', path[2])))
 
-      // ---- Home slider settings (admin save) ----
-      if (route === '/admin/home-settings' && method === 'POST') {
-        const body = await request.json()
-        const slides = Array.isArray(body.slides) ? body.slides.map((s) => ({
-          id: s.id || uuidv4(),
-          type: s.type === 'banner' ? 'banner' : 'campaign',
-          image: String(s.image || ''),
-          title: String(s.title || ''),
-          subtitle: String(s.subtitle || ''),
-          badge: String(s.badge || ''),
-          link: String(s.link || ''),
-          slug: String(s.slug || ''),
-        })) : []
-        const duration_ms = Number(body.duration_ms) > 0 ? Number(body.duration_ms) : 6000
-        await db.collection('settings').updateOne({ id: 'home_settings' }, { $set: { id: 'home_settings', slides, duration_ms, updated_at: new Date().toISOString() } }, { upsert: true })
-        return handleCORS(NextResponse.json({ ok: true, slides, duration_ms }))
-      }
+      // ---- Slider ----
+      if (route === '/admin/home-settings' && method === 'POST') return handleCORS(NextResponse.json(await saveHomeSettings(db, await request.json())))
 
-      // ---- News/Articles CMS ----
-      if (route === '/admin/news' && method === 'GET') {
-        const items = await db.collection('news').find({}).sort({ createdAt: -1 }).limit(500).toArray()
-        if (items.length === 0) {
-          return handleCORS(NextResponse.json(cleanArr(seedNews())))
-        }
-        return handleCORS(NextResponse.json(cleanArr(items)))
-      }
-      if (route === '/admin/news' && method === 'POST') {
-        if (!db) return noDbResponse()
-        const body = await request.json()
-        const title = String(body.title || '').trim()
-        if (!title) return handleCORS(NextResponse.json({ error: 'Judul wajib diisi.' }, { status: 400 }))
-        let base = slugify(title) || ('news-' + Date.now())
-        let slug = base, n = 1
-        while (await db.collection('news').findOne({ slug })) { slug = `${base}-${++n}` }
-        const doc = {
-          id: uuidv4(),
-          slug,
-          title,
-          image: body.image || body.imageUrl || '',
-          date: body.date || new Date().toISOString().slice(0, 10),
-          read_time: body.read_time || 3,
-          category: body.category || 'Berita',
-          content: body.content || '',
-          status: body.status || 'Draft',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-        await db.collection('news').insertOne({ ...doc })
-        return handleCORS(NextResponse.json(clean(doc)))
-      }
-      if (path[0] === 'admin' && path[1] === 'news' && path[2] && method === 'PUT') {
-        if (!db) return noDbResponse()
-        const id = path[2]
-        const body = await request.json()
-        const existing = await db.collection('news').findOne({ id })
-        if (!existing) return handleCORS(NextResponse.json({ error: 'Berita tidak ditemukan' }, { status: 404 }))
-        const update = { updatedAt: new Date().toISOString() }
-        if ('title' in body) update.title = String(body.title).trim() || existing.title
-        if ('image' in body) update.image = body.image
-        if ('imageUrl' in body) update.image = body.imageUrl
-        if ('content' in body) update.content = body.content
-        if ('category' in body) update.category = body.category
-        if ('status' in body) update.status = body.status
-        if ('date' in body) update.date = body.date
-        if ('read_time' in body) update.read_time = body.read_time
-        await db.collection('news').updateOne({ id }, { $set: update })
-        const d = await db.collection('news').findOne({ id })
-        return handleCORS(NextResponse.json(clean(d)))
-      }
-      if (path[0] === 'admin' && path[1] === 'news' && path[2] && method === 'DELETE') {
-        if (!db) return noDbResponse()
-        const r = await db.collection('news').deleteOne({ id: path[2] })
-        return handleCORS(NextResponse.json({ ok: true, deleted: r.deletedCount || 0 }))
-      }
+      // ---- Berita & Artikel ----
+      if (route === '/admin/news' && method === 'POST') return handleCORS(NextResponse.json(await createArticle(db, await request.json())))
+      if (path[0] === 'admin' && path[1] === 'news' && path[2] && method === 'PUT') return handleCORS(NextResponse.json(await updateArticle(db, path[2], await request.json())))
+      if (path[0] === 'admin' && path[1] === 'news' && path[2] && method === 'DELETE') return handleCORS(NextResponse.json(await deleteItem(db, 'article', path[2])))
     }
 
     return handleCORS(NextResponse.json({ error: `Route ${route} not found` }, { status: 404 }))
   } catch (error) {
+    if (error?.name === 'CmsError') return handleCORS(NextResponse.json({ error: error.message, fields: error.fields }, { status: error.status }))
+    if (error instanceof SyntaxError) return handleCORS(NextResponse.json({ error: 'Format data (JSON) tidak valid.' }, { status: 400 }))
     console.error('API Error:', route, error)
     // Most crashes on a DB-less deployment are `db.collection` on null → tell the caller clearly.
     if (/Cannot read propert(y|ies) of null/.test(String(error))) return noDbResponse()

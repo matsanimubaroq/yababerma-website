@@ -80,7 +80,7 @@ export default function NewsDetailPage({ params }) {
                             </Badge>
                             <span className="text-muted-foreground text-sm flex items-center gap-1.5">
                                 <Calendar className="w-4 h-4" />
-                                {new Date(item.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                {new Date(item.publishedAt || item.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
                             </span>
                         </div>
 
@@ -88,10 +88,10 @@ export default function NewsDetailPage({ params }) {
                             {item.title}
                         </h1>
 
-                        {item.imageUrl && (
+                        {item.image && (
                             <div className="aspect-video rounded-3xl overflow-hidden shadow-2xl mb-12 bg-brand-slatebg">
                                 <img
-                                    src={item.imageUrl}
+                                    src={item.image}
                                     alt={item.title}
                                     className="w-full h-full object-cover"
                                 />
@@ -111,11 +111,17 @@ export default function NewsDetailPage({ params }) {
                             </div>
                         </article>
 
+                        {item.tags?.length > 0 && (
+                            <div className="mt-8 flex flex-wrap gap-2">
+                                {item.tags.map(t => <span key={t} className="text-xs px-3 py-1 rounded-full bg-brand-greenlight text-brand-green font-medium">#{t}</span>)}
+                            </div>
+                        )}
+
                         <div className="mt-12 pt-8 border-t border-border flex flex-wrap items-center justify-between gap-6">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-brand-green flex items-center justify-center text-white font-bold">Y</div>
+                                <div className="w-10 h-10 rounded-full bg-brand-green flex items-center justify-center text-white font-bold">{(item.author || 'Y')[0].toUpperCase()}</div>
                                 <div>
-                                    <p className="text-sm font-bold text-brand-ink">Tim Redaksi YABABERMA</p>
+                                    <p className="text-sm font-bold text-brand-ink">{item.author || 'Tim Redaksi YABABERMA'}</p>
                                     <p className="text-xs text-muted-foreground">Yayasan Banua Berkah Mandiri</p>
                                 </div>
                             </div>

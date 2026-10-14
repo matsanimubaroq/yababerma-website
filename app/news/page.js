@@ -23,9 +23,15 @@ export default function NewsPage() {
             .catch(() => setLoading(false));
     }, []);
 
+    const [cat, setCat] = useState('Semua');
+    const categories = ['Semua', ...new Set(items.map(it => it.category).filter(Boolean))];
     const filtered = items.filter(it =>
-        it.title?.toLowerCase().includes(search.toLowerCase()) ||
-        it.category?.toLowerCase().includes(search.toLowerCase())
+        (cat === 'Semua' || it.category === cat) && (
+            it.title?.toLowerCase().includes(search.toLowerCase()) ||
+            it.category?.toLowerCase().includes(search.toLowerCase()) ||
+            it.author?.toLowerCase().includes(search.toLowerCase()) ||
+            (it.tags || []).some(t => t.toLowerCase().includes(search.toLowerCase()))
+        )
     );
 
     return (
@@ -57,6 +63,13 @@ export default function NewsPage() {
                             className="pl-12 h-12 md:h-14 rounded-xl text-lg border-brand-slatebg bg-brand-slatebg/20 focus:bg-white transition-all"
                         />
                     </div>
+                    {categories.length > 2 && (
+                        <div className="flex flex-wrap justify-center gap-2 mt-4">
+                            {categories.map(c => (
+                                <button key={c} onClick={() => setCat(c)} className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${cat === c ? 'bg-brand-green text-white' : 'bg-white border border-border text-brand-ink hover:border-brand-green'}`}>{c}</button>
+                            ))}
+                        </div>
+                    )}
                 </Card>
             </section>
 
@@ -80,9 +93,9 @@ export default function NewsPage() {
                             <Link key={item.id} href={`/news/${item.slug}`} className="group">
                                 <Card className="h-full rounded-3xl overflow-hidden border-0 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col bg-white">
                                     <div className="aspect-[16/10] overflow-hidden relative">
-                                        {item.imageUrl ? (
+                                        {item.image ? (
                                             <img
-                                                src={item.imageUrl}
+                                                src={item.image}
                                                 alt={item.title}
                                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                             />
@@ -100,7 +113,8 @@ export default function NewsPage() {
                                     <div className="p-6 flex-1 flex flex-col">
                                         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
                                             <Calendar className="w-3.5 h-3.5" />
-                                            {new Date(item.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                            {new Date(item.publishedAt || item.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                            {item.author && <span className="ml-2">&middot; {item.author}</span>}
                                         </div>
                                         <h3 className="text-xl font-heading font-bold text-brand-ink mb-4 line-clamp-2 group-hover:text-brand-green transition-colors leading-tight">
                                             {item.title}

@@ -55,7 +55,7 @@ export default function CampaignPreviewPage() {
     <div className="bg-brand-slatebg/40">
       <div className="sticky top-0 z-30 bg-amber-500 text-white text-sm font-semibold">
         <div className="container py-2.5 flex items-center justify-between gap-3">
-          <span className="flex items-center gap-2"><Eye className="w-4 h-4" />Mode Pratinjau{c.published === false ? ' — Program ini masih DRAF (belum tampil ke publik)' : ' — Program sudah Publik'}</span>
+          <span className="flex items-center gap-2"><Eye className="w-4 h-4" />Mode Pratinjau{c.status === 'Active' ? ' — Program sudah Publik' : (c.status === 'Inactive' ? ' — Program NONAKTIF (disembunyikan dari publik)' : ' — Program ini masih DRAF (belum tampil ke publik)')}</span>
           <Link href="/admin" className="underline hover:no-underline whitespace-nowrap">Tutup &amp; kembali ke panel</Link>
         </div>
       </div>

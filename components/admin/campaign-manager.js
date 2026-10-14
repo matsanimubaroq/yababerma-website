@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,34 +11,42 @@ import { Switch } from '@/components/ui/switch';
 import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Loader2, Save, Eye, EyeOff, Star, ExternalLink, Image as ImageIcon, History, FileBarChart, Film, Search, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, Save, ExternalLink, Image as ImageIcon, History, FileBarChart, Film, Search, X, Star, CalendarClock } from 'lucide-react';
 import { formatRupiah } from '@/lib/site-data';
 import MediaUpload from '@/components/admin/media-upload';
+import {
+  STATUS_OPTIONS, SORT_OPTIONS, StatusBadge, DbBanner, isScheduled, formatDate,
+  toLocalInput, fromLocalInput, sortByTime, adminFetch,
+} from '@/components/admin/cms-common';
 
 const CATS = [['zakat', 'Zakat'], ['sedekah', 'Sedekah'], ['wakaf', 'Wakaf'], ['fidyah', 'Fidyah'], ['kurban', 'Kurban'], ['bencana', 'Tanggap Bencana'], ['pendidikan', 'Pendidikan']];
 const CAT_LABEL = Object.fromEntries(CATS);
 
 const EMPTY = {
   title: '', category: 'sedekah', short_desc: '', image: '', story: '', video_url: '',
-  target_amount: 0, collected_amount: 0, donor_count: 0, deadline: '',
-  featured: false, published: false, gallery: [], updates: [], reports: [],
+  targetAmount: 0, collectedAmount: 0, donor_count: 0, endDate: '', publishedAt: '', status: 'Draft',
+  featured: false, gallery: [], updates: [], reports: [],
 };
 
 export default function CampaignManager({ adminKey }) {
   const [items, setItems] = useState(null);
+  const [db, setDb] = useState(null); // false => demo mode (read-only)
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState('');
   const [q, setQ] = useState('');
+  const [statusF, setStatusF] = useState('all');
+  const [catF, setCatF] = useState('all');
+  const [sort, setSort] = useState('newest');
+  const readOnly = db === false;
 
   const load = useCallback(async () => {
-    try {
-      const r = await fetch('/api/admin/campaigns', { headers: { 'x-admin-key': adminKey } });
-      const d = await r.json();
-      setItems(Array.isArray(d) ? d : []);
-    } catch { setItems([]); }
+    const { ok, data } = await adminFetch('/api/admin/campaigns', adminKey);
+    if (!ok) { toast.error(data.error || 'Gagal memuat program'); setItems([]); return; }
+    setItems(Array.isArray(data.items) ? data.items : []);
+    setDb(data.db !== false);
   }, [adminKey]);
 
   useEffect(() => { load(); }, [load]);
@@ -51,9 +59,10 @@ export default function CampaignManager({ adminKey }) {
     setForm({
       title: c.title || '', category: c.category || 'sedekah', short_desc: c.short_desc || '', image: c.image || '',
       story: Array.isArray(c.story) ? c.story.join('\n') : (c.story || ''),
-      video_url: c.video_url || '', target_amount: c.target_amount || 0, collected_amount: c.collected_amount || 0,
-      donor_count: c.donor_count || 0, deadline: c.deadline ? String(c.deadline).slice(0, 10) : '',
-      featured: !!c.featured, published: c.published !== false,
+      video_url: c.video_url || '', targetAmount: c.targetAmount || 0, collectedAmount: c.collectedAmount || 0,
+      donor_count: c.donor_count || 0, endDate: c.endDate ? String(c.endDate).slice(0, 10) : '',
+      publishedAt: toLocalInput(c.publishedAt), status: c.status || 'Draft',
+      featured: !!c.featured,
       gallery: Array.isArray(c.gallery) ? c.gallery : [],
       updates: Array.isArray(c.updates) ? c.updates : [],
       reports: Array.isArray(c.reports) ? c.reports : [],
@@ -61,38 +70,37 @@ export default function CampaignManager({ adminKey }) {
     setOpen(true);
   };
 
-  const save = async (publishState) => {
+  const save = async () => {
     if (!form.title.trim()) { toast.error('Nama program wajib diisi'); return; }
     setSaving(true);
-    const payload = { ...form, published: publishState !== undefined ? publishState : form.published };
-    try {
-      const url = editId ? `/api/admin/campaigns/${editId}` : '/api/admin/campaigns';
-      const method = editId ? 'PUT' : 'POST';
-      const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey }, body: JSON.stringify(payload) });
-      const d = await r.json();
-      if (!r.ok) { toast.error(d.error || 'Gagal menyimpan'); return; }
-      toast.success(editId ? 'Program diperbarui' : 'Program dibuat');
-      setOpen(false);
-      await load();
-    } catch { toast.error('Terjadi kesalahan jaringan'); }
-    finally { setSaving(false); }
+    const payload = { ...form, endDate: form.endDate || null, publishedAt: fromLocalInput(form.publishedAt) };
+    const { ok, data } = await adminFetch(editId ? `/api/admin/campaigns/${editId}` : '/api/admin/campaigns', adminKey, { method: editId ? 'PUT' : 'POST', body: payload });
+    setSaving(false);
+    if (!ok) { toast.error(data.error || 'Gagal menyimpan'); return; }
+    toast.success(editId ? 'Program diperbarui' : 'Program dibuat');
+    setOpen(false);
+    await load();
   };
 
-  const togglePublish = async (c) => {
+  // Quick show/hide from the card: Active <-> Inactive (a Draft becomes Active).
+  const toggleVisible = async (c) => {
+    const next = c.status === 'Active' ? 'Inactive' : 'Active';
     setBusyId(c.id);
-    try {
-      const r = await fetch(`/api/admin/campaigns/${c.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey }, body: JSON.stringify({ published: c.published === false }) });
-      if (r.ok) { toast.success(c.published === false ? 'Program dipublikasikan' : 'Program dijadikan draf'); await load(); }
-    } finally { setBusyId(''); }
+    const { ok, data } = await adminFetch(`/api/admin/campaigns/${c.id}`, adminKey, { method: 'PUT', body: { status: next } });
+    setBusyId('');
+    if (!ok) { toast.error(data.error || 'Gagal mengubah status'); return; }
+    toast.success(next === 'Active' ? 'Program ditampilkan di web' : 'Program disembunyikan dari web');
+    await load();
   };
 
   const remove = async (c) => {
     if (!window.confirm(`Hapus program "${c.title}"? Tindakan ini tidak bisa dibatalkan.`)) return;
     setBusyId(c.id);
-    try {
-      const r = await fetch(`/api/admin/campaigns/${c.id}`, { method: 'DELETE', headers: { 'x-admin-key': adminKey } });
-      if (r.ok) { toast.success('Program dihapus'); await load(); }
-    } finally { setBusyId(''); }
+    const { ok, data } = await adminFetch(`/api/admin/campaigns/${c.id}`, adminKey, { method: 'DELETE' });
+    setBusyId('');
+    if (!ok) { toast.error(data.error || 'Gagal menghapus'); return; }
+    toast.success('Program dihapus');
+    await load();
   };
 
   // ---- array field helpers ----
@@ -105,50 +113,91 @@ export default function CampaignManager({ adminKey }) {
   const setReport = (i, patch) => set({ reports: form.reports.map((rp, idx) => idx === i ? { ...rp, ...patch } : rp) });
   const removeReport = (i) => set({ reports: form.reports.filter((_, idx) => idx !== i) });
 
-  const filtered = (items || []).filter((c) => !q || (c.title || '').toLowerCase().includes(q.toLowerCase()) || (c.category || '').includes(q.toLowerCase()));
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const list = (items || []).filter((c) =>
+      (statusF === 'all' || c.status === statusF) &&
+      (catF === 'all' || c.category === catF) &&
+      (!needle || (c.title || '').toLowerCase().includes(needle) || (c.short_desc || '').toLowerCase().includes(needle)));
+    return sortByTime(list, sort);
+  }, [items, q, statusF, catF, sort]);
+
+  const activeCount = (items || []).filter((c) => c.status === 'Active').length;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-lg font-extrabold text-brand-ink">Program &amp; Donasi</h2>
-          <p className="text-sm text-muted-foreground">Kelola semua program yang tampil di halaman Program &amp; Donasi.</p>
+          <p className="text-sm text-muted-foreground">
+            Kelola program di halaman Beranda &amp; Donasi. Hanya program <b>Aktif</b> yang tampil di website.
+            {items && <span className="ml-1">({activeCount} aktif dari {items.length})</span>}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari program..." className="pl-9 rounded-xl w-48" />
-          </div>
-          <Button className="rounded-xl" onClick={openNew}><Plus className="w-4 h-4 mr-2" />Tambah Program</Button>
+        <Button className="rounded-xl" onClick={openNew} disabled={readOnly}><Plus className="w-4 h-4 mr-2" />Tambah Program</Button>
+      </div>
+
+      <DbBanner db={db} />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari program..." className="pl-9 rounded-xl w-52" />
         </div>
+        <Select value={statusF} onValueChange={setStatusF}>
+          <SelectTrigger className="rounded-xl w-40"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua status</SelectItem>
+            {STATUS_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l.split(' — ')[0]}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={catF} onValueChange={setCatF}>
+          <SelectTrigger className="rounded-xl w-44"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua jenis</SelectItem>
+            {CATS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={sort} onValueChange={setSort}>
+          <SelectTrigger className="rounded-xl w-36"><SelectValue /></SelectTrigger>
+          <SelectContent>{SORT_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+        </Select>
       </div>
 
       {items === null ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-64 rounded-2xl bg-muted animate-pulse" />)}</div>
       ) : filtered.length === 0 ? (
-        <Card className="rounded-2xl p-10 text-center text-muted-foreground">Belum ada program. Klik “Tambah Program” untuk membuat yang pertama.</Card>
+        <Card className="rounded-2xl p-10 text-center text-muted-foreground">
+          {items.length === 0 ? 'Belum ada program. Klik “Tambah Program” untuk membuat yang pertama.' : 'Tidak ada program yang cocok dengan filter.'}
+        </Card>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((c) => {
-            const pct = c.target_amount ? Math.min(Math.round((c.collected_amount / c.target_amount) * 100), 100) : 0;
+            const pct = c.targetAmount ? Math.min(Math.round((c.collectedAmount / c.targetAmount) * 100), 100) : 0;
             return (
-              <Card key={c.id} className="rounded-2xl overflow-hidden border-border bg-white flex flex-col">
+              <Card key={c.id} className={`rounded-2xl overflow-hidden border-border bg-white flex flex-col ${c.status !== 'Active' ? 'opacity-80' : ''}`}>
                 <div className="relative h-32 bg-muted">
                   {c.image ? <img src={c.image} alt={c.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-muted-foreground"><ImageIcon className="w-8 h-8" /></div>}
                   <div className="absolute top-2 left-2 flex gap-1.5">
-                    <Badge className={`${c.published === false ? 'bg-amber-500' : 'bg-brand-green'} text-white border-0`}>{c.published === false ? 'Draf' : 'Publik'}</Badge>
+                    <StatusBadge item={c} />
                     {c.featured && <Badge className="bg-brand-blue text-white border-0"><Star className="w-3 h-3" /></Badge>}
                   </div>
                 </div>
                 <div className="p-4 flex flex-col flex-1">
                   <Badge variant="secondary" className="w-fit mb-2 text-brand-blue bg-brand-bluelight border-0">{CAT_LABEL[c.category] || c.category}</Badge>
                   <h3 className="font-bold text-sm text-brand-ink line-clamp-2 leading-snug">{c.title}</h3>
-                  <div className="mt-2 text-xs text-muted-foreground">{formatRupiah(c.collected_amount)} / {formatRupiah(c.target_amount)} • {pct}% • {c.donor_count} donatur</div>
-                  <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-border">
-                    <Button size="sm" variant="outline" className="rounded-lg flex-1" onClick={() => openEdit(c)}><Pencil className="w-3.5 h-3.5 mr-1" />Edit</Button>
-                    <Button size="sm" variant="outline" className="rounded-lg" title="Pratinjau" onClick={() => window.open(`/admin/preview/${c.id}`, '_blank')}><ExternalLink className="w-3.5 h-3.5" /></Button>
-                    <Button size="sm" variant="outline" className="rounded-lg" title={c.published === false ? 'Publikasikan' : 'Jadikan draf'} disabled={busyId === c.id} onClick={() => togglePublish(c)}>{busyId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : (c.published === false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />)}</Button>
-                    <Button size="sm" variant="ghost" className="rounded-lg text-destructive" disabled={busyId === c.id} onClick={() => remove(c)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                  <div className="mt-2 text-xs text-muted-foreground">{formatRupiah(c.collectedAmount)} / {formatRupiah(c.targetAmount)} • {pct}% • {c.donor_count || 0} donatur</div>
+                  <div className="mt-1 text-[11px] text-muted-foreground flex items-center gap-1"><CalendarClock className="w-3 h-3" />Tayang {formatDate(c.publishedAt)}{c.endDate ? ` • berakhir ${formatDate(c.endDate)}` : ''}</div>
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+                    <label className="flex items-center gap-2 text-xs cursor-pointer">
+                      <Switch checked={c.status === 'Active'} disabled={readOnly || busyId === c.id} onCheckedChange={() => toggleVisible(c)} />
+                      {busyId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : (isScheduled(c) ? 'Terjadwal' : c.status === 'Active' ? 'Tampil' : 'Tersembunyi')}
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <Button size="sm" variant="outline" className="rounded-lg" disabled={readOnly} onClick={() => openEdit(c)}><Pencil className="w-3.5 h-3.5 mr-1" />Edit</Button>
+                      <Button size="sm" variant="outline" className="rounded-lg" title="Pratinjau" onClick={() => window.open(`/admin/preview/${c.id}`, '_blank')}><ExternalLink className="w-3.5 h-3.5" /></Button>
+                      <Button size="sm" variant="ghost" className="rounded-lg text-destructive" disabled={readOnly || busyId === c.id} onClick={() => remove(c)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -174,7 +223,19 @@ export default function CampaignManager({ adminKey }) {
                   <SelectContent>{CATS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label className="text-sm">Deadline</Label><Input type="date" value={form.deadline} onChange={(e) => set({ deadline: e.target.value })} className="rounded-xl mt-1" /></div>
+              <div><Label className="text-sm">Tanggal Berakhir</Label><Input type="date" value={form.endDate} onChange={(e) => set({ endDate: e.target.value })} className="rounded-xl mt-1" /></div>
+              <div>
+                <Label className="text-sm">Status</Label>
+                <Select value={form.status} onValueChange={(v) => set({ status: v })}>
+                  <SelectTrigger className="rounded-xl mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>{STATUS_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-sm">Mulai Tayang</Label>
+                <Input type="datetime-local" value={form.publishedAt} onChange={(e) => set({ publishedAt: e.target.value })} className="rounded-xl mt-1" />
+                <p className="text-[11px] text-muted-foreground mt-1">Kosongkan = tayang saat diaktifkan. Isi tanggal depan untuk menjadwalkan.</p>
+              </div>
               <div className="sm:col-span-2"><Label className="text-sm">Deskripsi Singkat</Label><Textarea value={form.short_desc} onChange={(e) => set({ short_desc: e.target.value })} rows={2} placeholder="Ringkasan singkat yang tampil di kartu program" className="rounded-xl mt-1" /></div>
             </div>
 
@@ -183,9 +244,9 @@ export default function CampaignManager({ adminKey }) {
 
             {/* Numbers */}
             <div className="grid grid-cols-3 gap-3">
-              <div><Label className="text-sm">Target (Rp)</Label><Input type="number" value={form.target_amount} onChange={(e) => set({ target_amount: e.target.value })} className="rounded-xl mt-1" /></div>
-              <div><Label className="text-sm">Terkumpul (Rp)</Label><Input type="number" value={form.collected_amount} onChange={(e) => set({ collected_amount: e.target.value })} className="rounded-xl mt-1" /></div>
-              <div><Label className="text-sm">Jumlah Donatur</Label><Input type="number" value={form.donor_count} onChange={(e) => set({ donor_count: e.target.value })} className="rounded-xl mt-1" /></div>
+              <div><Label className="text-sm">Target (Rp)</Label><Input type="number" min="0" value={form.targetAmount} onChange={(e) => set({ targetAmount: e.target.value })} className="rounded-xl mt-1" /></div>
+              <div><Label className="text-sm">Terkumpul (Rp)</Label><Input type="number" min="0" value={form.collectedAmount} onChange={(e) => set({ collectedAmount: e.target.value })} className="rounded-xl mt-1" /></div>
+              <div><Label className="text-sm">Jumlah Donatur</Label><Input type="number" min="0" value={form.donor_count} onChange={(e) => set({ donor_count: e.target.value })} className="rounded-xl mt-1" /></div>
             </div>
             <p className="text-[11px] text-muted-foreground -mt-2">Angka Terkumpul &amp; Jumlah Donatur diisi &amp; diperbarui manual oleh admin.</p>
 
@@ -238,8 +299,7 @@ export default function CampaignManager({ adminKey }) {
 
             {/* Flags */}
             <div className="flex items-center gap-6 pt-1">
-              <label className="flex items-center gap-2 cursor-pointer"><Switch checked={form.featured} onCheckedChange={(v) => set({ featured: v })} /><span className="text-sm">Tampilkan sebagai Program Pilihan</span></label>
-              <label className="flex items-center gap-2 cursor-pointer"><Switch checked={form.published} onCheckedChange={(v) => set({ published: v })} /><span className="text-sm">Publikasikan (tampil ke publik)</span></label>
+              <label className="flex items-center gap-2 cursor-pointer"><Switch checked={form.featured} onCheckedChange={(v) => set({ featured: v })} /><span className="text-sm">Tampilkan sebagai Program Pilihan di Beranda</span></label>
             </div>
           </div>
 
@@ -248,8 +308,8 @@ export default function CampaignManager({ adminKey }) {
               {editId && <Button variant="ghost" className="rounded-xl" onClick={() => window.open(`/admin/preview/${editId}`, '_blank')}><ExternalLink className="w-4 h-4 mr-2" />Pratinjau</Button>}
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="rounded-xl" onClick={() => save(false)} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}Simpan sebagai Draf</Button>
-              <Button className="rounded-xl" onClick={() => save(true)} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}Simpan &amp; Publikasikan</Button>
+              <Button variant="outline" className="rounded-xl" onClick={() => setOpen(false)} disabled={saving}>Batal</Button>
+              <Button className="rounded-xl" onClick={save} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}Simpan</Button>
             </div>
           </DialogFooter>
         </DialogContent>
