@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { useAuth } from '@/app/providers';
+import { useAuth, LOGIN_ENABLED } from '@/app/providers';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -90,8 +90,13 @@ export default function DashboardPage() {
         <Card className="max-w-md mx-auto rounded-2xl p-8 text-center border-border shadow-sm">
           <div className="w-16 h-16 rounded-2xl bg-brand-greenlight flex items-center justify-center mx-auto mb-4"><HeartHandshake className="w-8 h-8 text-brand-green" /></div>
           <h1 className="text-2xl font-extrabold text-brand-ink">Portal Donatur</h1>
-          <p className="text-muted-foreground mt-2">Masuk untuk melihat riwayat donasi, total kontribusi, dan mengunduh kuitansi resmi Anda.</p>
-          <Button onClick={login} className="w-full rounded-xl mt-6 h-12"><LogIn className="w-5 h-5 mr-2" />Masuk dengan Google</Button>
+          {LOGIN_ENABLED ? (<>
+            <p className="text-muted-foreground mt-2">Masuk untuk melihat riwayat donasi, total kontribusi, dan mengunduh kuitansi resmi Anda.</p>
+            <Button onClick={login} className="w-full rounded-xl mt-6 h-12"><LogIn className="w-5 h-5 mr-2" />Masuk dengan Google</Button>
+          </>) : (<>
+            <p className="text-muted-foreground mt-2">Portal donatur belum tersedia. Untuk kuitansi atau riwayat donasi, silakan hubungi kami melalui Pusat Layanan.</p>
+            <a href="/pusat-layanan"><Button className="w-full rounded-xl mt-6 h-12">Pusat Layanan</Button></a>
+          </>)}
         </Card>
       </div>
     );

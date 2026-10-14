@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Menu, LogOut, LayoutDashboard, Heart, LogIn } from 'lucide-react';
 import { NAV_ITEMS, ORG } from '@/lib/site-data';
-import { useAuth } from '@/app/providers';
+import { useAuth, LOGIN_ENABLED } from '@/app/providers';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -57,7 +57,7 @@ export default function Navbar() {
                 <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive"><LogOut className="w-4 h-4 mr-2" />Keluar</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          ) : (
+          ) : LOGIN_ENABLED && (
             <Button variant="outline" className="rounded-xl hidden md:flex" onClick={login}><LogIn className="w-4 h-4 mr-1.5" />Masuk</Button>
           ))}
 
@@ -76,7 +76,7 @@ export default function Navbar() {
               </nav>
               <div className="mt-6 space-y-2">
                 <Link href="/donasi" onClick={() => setOpen(false)}><Button className="w-full rounded-xl"><Heart className="w-4 h-4 mr-1.5" />Donasi Sekarang</Button></Link>
-                {!user && <Button variant="outline" className="w-full rounded-xl" onClick={login}><LogIn className="w-4 h-4 mr-1.5" />Masuk dengan Google</Button>}
+                {!user && LOGIN_ENABLED && <Button variant="outline" className="w-full rounded-xl" onClick={login}><LogIn className="w-4 h-4 mr-1.5" />Masuk dengan Google</Button>}
                 {user && <Link href="/dashboard" onClick={() => setOpen(false)}><Button variant="outline" className="w-full rounded-xl">Dashboard Donatur</Button></Link>}
               </div>
             </SheetContent>

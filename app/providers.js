@@ -30,6 +30,9 @@ const AuthContext = createContext({
   refresh: async () => {},
 });
 
+// Donor login stays hidden until Google OAuth is configured (see .env.example); set NEXT_PUBLIC_GOOGLE_LOGIN=true to show it.
+export const LOGIN_ENABLED = process.env.NEXT_PUBLIC_GOOGLE_LOGIN === 'true';
+
 export const useAuth = () => useContext(AuthContext);
 
 function AuthProvider({ children }) {
