@@ -7,6 +7,16 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 
 // ---------------- MongoDB ----------------
 let dbPromise
+let dbFailure = null // coarse failure category only (never host/credentials), exposed on the health route
+
+function classifyMongoError(e) {
+  const msg = String(e?.message || e)
+  if (/bad auth|authentication failed/i.test(msg)) return 'auth_failed'
+  if (/querySrv|ENOTFOUND|EAI_AGAIN/i.test(msg)) return 'dns_error'
+  if (e?.name === 'MongoServerSelectionError') return 'unreachable_check_atlas_network_access'
+  if (/URI|escaped|percent|Invalid scheme|Invalid connection string/i.test(msg)) return 'invalid_uri_check_password_encoding'
+  return 'connect_error'
+}
 
 // Returns a Db instance, or null when MONGO_URL is missing/placeholder/unreachable.
 // Never throws: the site must keep serving seed data even without a database.
@@ -14,8 +24,10 @@ async function connectToMongo() {
   const uri = String(process.env.MONGO_URL || '').trim()
   if (!uri || uri.includes('cluster0.abcde.mongodb.net') || !/^mongodb(\+srv)?:\/\//.test(uri)) {
     if (uri) console.error('MONGO_URL tidak valid, berjalan tanpa database')
+    dbFailure = !uri ? 'missing_env' : /^mongodb(\+srv)?:\/\//.test(uri) ? 'placeholder_value' : 'invalid_format'
     return null
   }
+  if (/[<>]/.test(uri)) { dbFailure = 'placeholder_value'; return null }
   if (!dbPromise) {
     try {
       const mongoClient = new MongoClient(uri, { serverSelectionTimeoutMS: 8000 })
@@ -23,9 +35,10 @@ async function connectToMongo() {
         const database = c.db(process.env.DB_NAME || 'yababerma')
         try { await ensureSeed(database) } catch (e) { console.error('Seed error:', e) }
         return database
-      }).catch((e) => { console.error('Mongo connect error:', e?.message || e); dbPromise = undefined; return null })
+      }).catch((e) => { console.error('Mongo connect error:', e?.message || e); dbFailure = classifyMongoError(e); dbPromise = undefined; return null })
     } catch (e) {
       console.error('Mongo init error:', e?.message || e)
+      dbFailure = classifyMongoError(e)
       dbPromise = undefined
       return null
     }
@@ -538,7 +551,7 @@ async function handleRoute(request, { params }) {
 
     // Health
     if ((route === '/' || route === '/root') && method === 'GET') {
-      return handleCORS(NextResponse.json({ message: 'YABABERMA API OK', db: !!db }))
+      return handleCORS(NextResponse.json({ message: 'YABABERMA API OK', db: !!db, ...(db ? {} : { db_reason: dbFailure }) }))
     }
 
     // ---- Campaigns ----
