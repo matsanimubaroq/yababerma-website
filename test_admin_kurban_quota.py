@@ -3,11 +3,12 @@
 Backend API Test Suite for YABABERMA - Admin Kurban Quota Management
 Tests admin-protected endpoints for kurban quota management
 """
+import os
 import requests
 import time
 import sys
 
-BASE_URL = "https://yababerma-donasi.preview.emergentagent.com/api"
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:3000") + "/api"
 ADMIN_KEY = "yababerma-admin-2026"
 
 def log_test(name, passed, details=""):

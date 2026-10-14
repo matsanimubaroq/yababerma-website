@@ -6,12 +6,13 @@ Tests two backend changes:
 2. Admin bulk delete endpoint (POST /api/admin/delete)
 """
 
+import os
 import requests
 import sys
 import json
 import time
 
-BASE_URL = "https://yababerma-donasi.preview.emergentagent.com/api"
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:3000") + "/api"
 ADMIN_KEY = "yababerma-admin-2026"
 
 # Track created resources for cleanup

@@ -6,12 +6,13 @@ Tests two current_focus tasks:
 2. Admin single campaign GET for draft preview (GET /api/admin/campaigns/{id})
 """
 
+import os
 import requests
 import random
 import string
 
 # Configuration
-BASE_URL = "https://yababerma-donasi.preview.emergentagent.com/api"
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:3000") + "/api"
 ADMIN_KEY = "yababerma-admin-2026"
 HEADERS_WITH_KEY = {"x-admin-key": ADMIN_KEY}
 

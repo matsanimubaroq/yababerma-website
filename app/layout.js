@@ -9,7 +9,7 @@ export const metadata = {
   title: 'Yayasan Banua Berkah Mandiri | Filantropi Islam & Kemanusiaan Banjarmasin',
   description: 'Yayasan Banua Berkah Mandiri (YABABERMA) - lembaga filantropi Islam & kemanusiaan di Banjarmasin. Zakat, Wakaf, Sedekah, Panti Asuhan, TPQ, dan Bantuan Dhuafa.',
   icons: {
-    icon: 'https://customer-assets-m6fa6gv7.emergentagent.net/job_8686a8aa-42c1-46ab-92c8-1ae6eb1872e2/artifacts/4k17zphv_logo%20yababerma.png',
+    icon: '/logo.png',
   },
 }
 

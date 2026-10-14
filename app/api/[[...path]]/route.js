@@ -61,7 +61,8 @@ function slugify(s) {
 }
 
 // ---------------- Email (Resend) ----------------
-const ORG_LOGO = 'https://customer-assets-m6fa6gv7.emergentagent.net/job_8686a8aa-42c1-46ab-92c8-1ae6eb1872e2/artifacts/4k17zphv_logo%20yababerma.png'
+// Emails need an absolute URL; the logo is served from /public.
+const ORG_LOGO = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yababerma.org').replace(/\/$/, '') + '/logo.png'
 const BANK_LABELS = { bsi: 'Bank Syariah Indonesia (BSI)', mandiri: 'Bank Mandiri', bca: 'Bank BCA', bri: 'Bank BRI', kalsel: 'Bank Kalsel' }
 const rp = (n) => 'Rp ' + (Number(n) || 0).toLocaleString('id-ID')
 function escapeHtml(v = '') { return String(v).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c])) }
@@ -401,7 +402,9 @@ async function ensureSeed(db) {
 
 // ---------------- Auth helpers ----------------
 const SESSION_COOKIE = 'yb_session'
-const EMERGENT_SESSION_URL = 'https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data'
+const OAUTH_STATE_COOKIE = 'yb_oauth_state'
+const SESSION_MAX_AGE = 7 * 24 * 60 * 60
+const cookieOpts = (maxAge) => ({ httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge })
 
 async function getUserFromRequest(request, db) {
   const token = request.cookies.get(SESSION_COOKIE)?.value
@@ -797,30 +800,73 @@ async function handleRoute(request, { params }) {
     }
 
     // ---- Auth ----
-    if (route === '/auth/session' && method === 'POST') {
-      const body = await request.json()
-      const session_id = body.session_id
-      if (!session_id) return handleCORS(NextResponse.json({ error: 'Missing session_id' }, { status: 400 }))
-      const res = await fetch(EMERGENT_SESSION_URL, { headers: { 'X-Session-ID': session_id } })
-      if (!res.ok) return handleCORS(NextResponse.json({ error: 'Invalid session' }, { status: 401 }))
-      const data = await res.json()
-      const userId = data.id || data.user_id || data.email
-      const user = {
-        id: userId,
-        email: data.email,
-        name: data.name || data.email,
-        picture: data.picture || null,
+    // Google OAuth 2.0 (authorization code flow). Needs GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET;
+    // the redirect URI https://<domain>/api/auth/google/callback must be registered in Google Cloud.
+    if (route === '/auth/google' && method === 'GET') {
+      const origin = new URL(request.url).origin
+      if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+        return NextResponse.redirect(new URL('/dashboard?login_error=not_configured', origin))
       }
-      await db.collection('users').updateOne({ id: userId }, { $set: { ...user, updated_at: new Date().toISOString() }, $setOnInsert: { created_at: new Date().toISOString(), newsletter: true } }, { upsert: true })
-      const session_token = data.session_token || uuidv4()
-      const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-      await db.collection('sessions').updateOne({ session_token }, { $set: { session_token, user_id: userId, expires, created_at: new Date().toISOString() } }, { upsert: true })
-      const dbUser = await db.collection('users').findOne({ id: userId })
-      const response = NextResponse.json({ ok: true, user: clean(dbUser) })
-      response.cookies.set(SESSION_COOKIE, session_token, {
-        httpOnly: true, secure: true, sameSite: 'none', path: '/', maxAge: 7 * 24 * 60 * 60,
+      const state = uuidv4()
+      const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+      authUrl.search = new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        redirect_uri: `${origin}/api/auth/google/callback`,
+        response_type: 'code',
+        scope: 'openid email profile',
+        state,
+        prompt: 'select_account',
+      }).toString()
+      const response = NextResponse.redirect(authUrl)
+      response.cookies.set(OAUTH_STATE_COOKIE, state, cookieOpts(600))
+      return response
+    }
+
+    if (route === '/auth/google/callback' && method === 'GET') {
+      const url = new URL(request.url)
+      const origin = url.origin
+      const fail = (reason) => {
+        const response = NextResponse.redirect(new URL(`/dashboard?login_error=${reason}`, origin))
+        response.cookies.set(OAUTH_STATE_COOKIE, '', cookieOpts(0))
+        return response
+      }
+      const code = url.searchParams.get('code')
+      const state = url.searchParams.get('state')
+      const expectedState = request.cookies.get(OAUTH_STATE_COOKIE)?.value
+      if (url.searchParams.get('error')) return fail('denied')
+      if (!code || !state || !expectedState || state !== expectedState) return fail('invalid_state')
+      if (!db) return fail('db_missing')
+      if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return fail('not_configured')
+
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: process.env.GOOGLE_CLIENT_ID,
+          client_secret: process.env.GOOGLE_CLIENT_SECRET,
+          redirect_uri: `${origin}/api/auth/google/callback`,
+          grant_type: 'authorization_code',
+        }),
       })
-      return handleCORS(response)
+      if (!tokenRes.ok) return fail('token_exchange')
+      const { access_token } = await tokenRes.json()
+      const infoRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${access_token}` } })
+      if (!infoRes.ok) return fail('userinfo')
+      const info = await infoRes.json()
+      if (!info.sub || !info.email || info.email_verified === false) return fail('unverified_email')
+
+      const now = new Date().toISOString()
+      const user = { id: info.sub, email: info.email, name: info.name || info.email, picture: info.picture || null }
+      await db.collection('users').updateOne({ id: user.id }, { $set: { ...user, updated_at: now }, $setOnInsert: { created_at: now, newsletter: true } }, { upsert: true })
+      const session_token = uuidv4()
+      const expires = new Date(Date.now() + SESSION_MAX_AGE * 1000).toISOString()
+      await db.collection('sessions').insertOne({ session_token, user_id: user.id, expires, created_at: now })
+
+      const response = NextResponse.redirect(new URL('/dashboard', origin))
+      response.cookies.set(SESSION_COOKIE, session_token, cookieOpts(SESSION_MAX_AGE))
+      response.cookies.set(OAUTH_STATE_COOKIE, '', cookieOpts(0))
+      return response
     }
 
     if (route === '/auth/me' && method === 'GET') {
@@ -832,9 +878,9 @@ async function handleRoute(request, { params }) {
 
     if (route === '/auth/logout' && method === 'POST') {
       const token = request.cookies.get(SESSION_COOKIE)?.value
-      if (token) await db.collection('sessions').deleteOne({ session_token: token })
+      if (db && token) await db.collection('sessions').deleteOne({ session_token: token })
       const response = NextResponse.json({ ok: true })
-      response.cookies.set(SESSION_COOKIE, '', { httpOnly: true, secure: true, sameSite: 'none', path: '/', maxAge: 0 })
+      response.cookies.set(SESSION_COOKIE, '', cookieOpts(0))
       return handleCORS(response)
     }
 
