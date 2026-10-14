@@ -443,10 +443,13 @@ async function getUserFromRequest(request, db) {
 // ---------------- Admin key ----------------
 // The default key always works (recovery path); the env ADMIN_KEY and the key stored in the
 // `settings` collection (changed via the admin panel / OTP reset) are accepted as well.
+// Bootstrap key for a fresh install only: it is public (this repository is public), so it stops
+// working as soon as a real key exists, either ADMIN_KEY in the environment or a password set
+// through the panel (change-password / OTP reset).
 const DEFAULT_ADMIN_KEY = 'yababerma-admin-2026'
 
 async function getValidAdminKeys(db) {
-  const keys = new Set([DEFAULT_ADMIN_KEY])
+  const keys = new Set()
   const envKey = String(process.env.ADMIN_KEY || '').trim()
   if (envKey) keys.add(envKey)
   if (db) {
@@ -456,6 +459,7 @@ async function getValidAdminKeys(db) {
       if (stored) keys.add(stored)
     } catch (e) { console.error('Admin key lookup error:', e?.message || e) }
   }
+  if (keys.size === 0) keys.add(DEFAULT_ADMIN_KEY)
   return keys
 }
 

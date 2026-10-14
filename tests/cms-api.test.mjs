@@ -278,3 +278,17 @@ test('Public lists never leak non-Active items (property check over many states)
   }
   for (const m of made) await call('DELETE', `admin/campaigns/${m.id}`, { admin: true })
 })
+
+test('the public default admin key only works while no real key is configured', async () => {
+  noDb()
+  const probe = async () => {
+    const req = new NextRequest('http://localhost/api/admin/campaigns', { headers: { 'x-admin-key': 'yababerma-admin-2026' } })
+    return (await route.GET(req, { params: Promise.resolve({ path: ['admin', 'campaigns'] }) })).status
+  }
+  assert.equal(await probe(), 401, 'default key rejected when ADMIN_KEY is set')
+  const saved = process.env.ADMIN_KEY
+  delete process.env.ADMIN_KEY
+  try {
+    assert.equal(await probe(), 200, 'default key still opens a fresh install (no lockout)')
+  } finally { process.env.ADMIN_KEY = saved }
+})
